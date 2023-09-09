@@ -3,7 +3,7 @@ Windows
 Tai burp : https://portswigger-cdn.net/burp/releases/download?product=pro&version=&type=jar  
 copy `burpsuite_pro.jar` to folder have `loader.jar` file  
 cmd `java -jar loader.jar`  
-Create a Bat file
+Create a Bat file  
 cmd `create-bat`  
 Create a vbs file  
 cmd `create-ps`  
