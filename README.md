@@ -13,11 +13,13 @@ copy file vbs `BurpSuiteProfessional.vbs` after run `create-ps.ps1` to `C:\Progr
 ==> On keyboard `Windows` => `burp` enjoy cai moment nay   
   
 Linux(tested on kali)  
-With ubuntu :  switch jdk to jdk11  
-`sudo apt install openjdk-11-jdk`  
+  
+With ubuntu :  switch jdk to jdk18  
+`sudo apt-get install openjdk-18-jdk`    
 `update-java-alternatives --list`  
 `sudo update-java-alternatives --set /path/to/java/version`  
 `sudo update-alternatives --config java`  
+Choose jdk 18, go on next step  
 tai burp : wget "https://portswigger-cdn.net/burp/releases/download?product=pro&version=&type=jar"  
 on term `curl "https://portswigger-cdn.net/burp/releases/download?product=pro&version=&type=jar" -o burpsuite_pro.jar`  
 copy `burpsuite_pro.jar` to folder have `loader.jar`, `burp` file  
