@@ -17,6 +17,7 @@ With ubuntu :  switch jdk to jdk11
 `sudo apt install openjdk-11-jdk`  
 `update-java-alternatives --list`  
 `sudo update-java-alternatives --set /path/to/java/version`  
+`sudo update-alternatives --config java`  
 tai burp : wget "https://portswigger-cdn.net/burp/releases/download?product=pro&version=&type=jar"  
 on term `curl "https://portswigger-cdn.net/burp/releases/download?product=pro&version=&type=jar" -o burpsuite_pro.jar`  
 copy `burpsuite_pro.jar` to folder have `loader.jar`, `burp` file  
