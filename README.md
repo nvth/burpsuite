@@ -1,4 +1,10 @@
 # loader-burp
+
+### Installation
+```cmd.cmd
+git clone https://github.com/nvth/loader-burp.git
+```
+requirement jdk >=20  
 ## Windows  
 Tai burp : https://portswigger-cdn.net/burp/releases/download?product=pro&version=&type=jar and rename `burpsuite_pro_v20xx.xx.xx.jar` to `burpsuite_pro.jar` or  
 curl "https://portswigger-cdn.net/burp/releases/download?product=pro&version=&type=jar" --output burpsuite_pro.jar  
