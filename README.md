@@ -1,6 +1,7 @@
 # loader-burp
 ## Windows  
-Tai burp : https://portswigger-cdn.net/burp/releases/download?product=pro&version=&type=jar  
+Tai burp : https://portswigger-cdn.net/burp/releases/download?product=pro&version=&type=jar and rename `burpsuite_pro_v20xx.xx.xx.jar` to `burpsuite_pro.jar` or  
+curl "https://portswigger-cdn.net/burp/releases/download?product=pro&version=&type=jar" --output burpsuite_pro.jar  
 copy `burpsuite_pro.jar` to folder have `loader.jar` file  
 on cmd `java -jar loader.jar`  
 Create a Bat file  
@@ -15,7 +16,7 @@ copy file vbs `BurpSuiteProfessional.vbs` after run `create-ps.ps1` to `C:\Progr
 ## Linux  
 ### Kali
 Choose jdk 18, go on next step  
-tai burp : wget "https://portswigger-cdn.net/burp/releases/download?product=pro&version=&type=jar"  
+tai burp : wget "https://portswigger-cdn.net/burp/releases/download?product=pro&version=&type=jar" and rename `burpsuite_pro_v20xx.xx.xx.jar` to `burpsuite_pro.jar`    
 on term `curl "https://portswigger-cdn.net/burp/releases/download?product=pro&version=&type=jar" -o burpsuite_pro.jar`  
 copy `burpsuite_pro.jar` to folder have `loader.jar`, `burp` file  
 on term `java -jar loader.jar`=> press Run  
