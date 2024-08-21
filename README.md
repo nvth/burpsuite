@@ -1,13 +1,5 @@
 <a id="readme-top"></a>
 
-[![Contributors][contributors-shield]][contributors-url]
-[![Forks][forks-shield]][forks-url]
-[![Stargazers][stars-shield]][stars-url]
-[![Issues][issues-shield]][issues-url]
-[![MIT License][license-shield]][license-url]
-[![LinkedIn][linkedin-shield]][linkedin-url]
-
-
 <br />
 <div align="center">
   <a href="https://github.com/nvth/BurpActivator">
@@ -294,7 +286,7 @@ Project Link: [https://github.com/nvth/BurpActivator](https://github.com/nvth/Bu
 [contributors-url]: https://github.com/nvth/BurpActivator/graphs/contributors
 
 [forks-url]: https://github.com/othneildrew/Best-README-Template/network/members
-[stars-url]: https://github.com/nvth/BurpActivator/stargazers
+[stars-url]: https://img.shields.io/github/stars/nvth/BurpActivator
 [issues-url]: https://github.com/nvth/BurpActivator/issues
 [license-url]: https://github.com/nvth/BurpActivator/blob/master/LICENSE.txt
 [linkedin-shield]: https://img.shields.io/badge/-LinkedIn-black.svg?style=for-the-badge&logo=linkedin&colorB=555
