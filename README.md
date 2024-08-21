@@ -60,12 +60,10 @@
 This is Burpsuite Pro for free.
 
 Here's why:
-* Save your money.h
+* Save your money
 * Funny to use :smile:
 
 Hope y'all enjoy it!
-
-Use the `BLANK_README.md` to get started.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -95,7 +93,7 @@ This is an example of how to list things you need to use the software and how to
   ```
 * java on windows  
 
-[Download here](https://www.oracle.com/java/technologies/downloads/)
+  [Download here](https://www.oracle.com/java/technologies/downloads/)
 
 ### Installation
 Clone the repo
@@ -111,7 +109,7 @@ Clone the repo
    
 3. Re-folder (skip this step if burpsuite_pro.jar in `/BurpActivator` directory)
    ```
-   copy `burpsuite_pro.jar` to folder contant `loader.jar` (/BurpActivator)
+   copy `burpsuite_pro.jar` to folder contain `loader.jar` (/BurpActivator)
    ```
 4. Run loader `loader.jar`
    ```sh
