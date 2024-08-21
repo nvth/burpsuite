@@ -28,8 +28,25 @@ copy `burpsuite_pro.jar` to folder have `loader.jar`, `burp` file
 on term `java -jar loader.jar`=> press Run  
 after update license
 on term `chmod u+x burp`  
+run `burp` on terminal directory contant loader.jar and burpsuite_pro.jar  
+
+[Symlink]  
+open `burp` and change path to loader.jar and burpsuite_pro.jar  
+```java
+javaagent:/path/to/loader.jar -noverify -jar /path/to/burpsuite_pro.jar
+```
+save it and create a symlink  
+```cmd
+ln -s /path/to/burp /usr/local/bin/burp
+```  
+
+Run burp on anywhere on term with `sudo burp`  
+<!---
+on term using `chmod +x /usr/local/bin/burp`  
 on term `sudo mv burp /bin/burp`  
-on term `burp` enjoul cai moment nay  
+on term `burp` enjoul cai moment nay
+-->
+  
 
 #### ubuntu :  switch jdk to jdk18  
 `sudo apt-get install openjdk-18-jdk`    
