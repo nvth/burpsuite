@@ -65,6 +65,7 @@ Here's why:
 
 Hope y'all enjoy it!
 
+_Thanks Dr.FarFar for this loader_
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 
