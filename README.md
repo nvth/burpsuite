@@ -208,6 +208,30 @@ Clone the repo
     4.3. Run `burp`
 
     `Windows + Alt + T` and type `sudo burp` and enjoy it
+
+
+##### Switch java on ubuntu 
+On ubuntu, maybe error when using `loader.jar`, so
+
+1.  Switch jdk to jdk18
+```sh
+sudo apt-get install openjdk-18-jdk
+```
+
+```sh
+update-java-alternatives --list
+```
+
+```sh
+sudo update-java-alternatives --set /path/to/java/version
+```
+
+```sh
+sudo update-alternatives --config java
+```
+
+use `loader_ubuntu.jar` instead of `loader.jar` 
+
 <!-- USAGE EXAMPLES -->
 ## Usage
 
