@@ -158,8 +158,14 @@ Clone the repo
 
 6. Symbolic link - Create a `.bat` file
 
+    Enabling script execution
+   
     Run `Windows PowerShell as Admin`
 
+    ```s
+    Set-ExecutionPolicy RemoteSigned
+    ```
+    
     Run Create-bat.ps1 `with PowerShell` 
     ```s
     create-bat.ps1
@@ -172,6 +178,11 @@ Clone the repo
     create-ps.ps1
     ```
     Run `BurpsuiteProfessional.vbs` on directory after run command create .vbs
+
+    Disabling script execution
+    ```s
+    Set-ExecutionPolicy Default
+    ```
 10. Create shortcut and you can find it on start
 
     Create short-cut `BurpsuiteProfessional.vbs` we got `Shortcut - BurpsuiteProfessional.vbs`
