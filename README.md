@@ -158,16 +158,21 @@ Clone the repo
 
 6. Symbolic link - Create a `.bat` file
 
+    Run `Windows PowerShell as Admin`
+
+    Run Create-bat.ps1 `with PowerShell` 
     ```s
     create-bat.ps1
     ```
     Run `Burp.bat` on directory after run command create .bat
-7. Symbolic link - Create a `vbs` file
+8. Symbolic link - Create a `vbs` file
+
+    Run create-ps.ps1 `with PowerShell`
     ```s
     create-ps.ps1
     ```
     Run `BurpsuiteProfessional.vbs` on directory after run command create .vbs
-8. Create shortcut and you can find it on start
+10. Create shortcut and you can find it on start
 
     Create short-cut `BurpsuiteProfessional.vbs` we got `Shortcut - BurpsuiteProfessional.vbs`
 
