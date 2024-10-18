@@ -175,7 +175,7 @@ Clone the repo
 
     Run create-ps.ps1 `with PowerShell`
     ```s
-    create-ps.ps1
+    create-vbs.ps1
     ```
     Run `BurpsuiteProfessional.vbs` on directory after run command create .vbs
 
