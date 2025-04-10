@@ -165,6 +165,10 @@ Clone the repo
     ```s
     Set-ExecutionPolicy RemoteSigned
     ```
+    try if not work
+   ```s
+   Set-ExecutionPolicy Unrestricted
+   ```
     
     Run Create-bat.ps1 `with PowerShell` 
     ```s
