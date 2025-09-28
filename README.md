@@ -103,7 +103,8 @@ Clone the repo
    ```
 #### Windows
 
-1. Install
+1. Reqrement
+ - Install java 21 or jdk8  
 2. Open Powershell (if not work, run powershell as admin)
     ```s
     Set-ExecutionPolicy RemoteSigned
@@ -115,7 +116,7 @@ Clone the repo
     ```s
     Set-ExecutionPolicy Default
     ```
-3. Active
+4. Active
 
     Edit your name or anything (it will be signed on burp like ---Licence to You---)
 
@@ -148,7 +149,7 @@ Clone the repo
     ![licence6](img/licence6.png)
 
 
-4. Create shortcut and you can find it on start
+5. Create shortcut and you can find it on start
 
     Create short-cut `BurpsuiteProfessional.vbs` we got `Shortcut - BurpsuiteProfessional.vbs`
 
