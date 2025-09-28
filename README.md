@@ -103,7 +103,7 @@ Clone the repo
    ```
 #### Windows
 
-1. Reqrement
+1. Requirement
  - Install java 21 or jdk8  
 2. Open Powershell (if not work, run powershell as admin)
     ```s
