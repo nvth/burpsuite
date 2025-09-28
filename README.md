@@ -102,41 +102,32 @@ Clone the repo
     git clone https://github.com/nvth/BurpActivator.git
    ```
 #### Windows
-1. Open folder `/BurpActivator` (make sure in `/BurpActivator` directory)
-2. Download Burpsuite (jar version)
-   ```sh
-    curl "https://portswigger-cdn.net/burp/releases/download?product=pro&version=&type=jar" --output burpsuite_pro.jar 
-   ```
-   
-3. Re-folder (skip this step if burpsuite_pro.jar in `/BurpActivator` directory)
-   ```
-   copy `burpsuite_pro.jar` to folder contain `loader.jar` (/BurpActivator)
-   ```
-4. Run loader `loader.jar`
-   ```sh
-   java -jar loader.jar
-   ```
-5. Active
 
-    5.1. Run `loader Command`
+1. Install
+2. Open Powershell (if not work, run powershell as admin)
+    ```s
+    Set-ExecutionPolicy RemoteSigned
+    Set-ExecutionPolicy Unrestricted
+    ```
+    Run `install.ps1`
+
+    Disabling script execution
+    ```s
+    Set-ExecutionPolicy Default
+    ```
+3. Active
 
     Edit your name or anything (it will be signed on burp like ---Licence to You---)
 
-    `Run` loader command and Copy `Licence Key`.
-
     ![licence1](img/licence1.png)  
     
-    5.2. Paste `Licence Key`
-
     Paste `Licence Key` and `Next`
 
     ![licence2](img/licence2.png)
 
-    5.3. Manual activation
+    Manual activation
     
     ![licence3](img/licence3.png)
-
-    5.3.1.
 
     `Copy Request` from `Manual Activation` windows Burpsuite and Paste it to `Activation Request` of `Loader.jar`
 
@@ -156,38 +147,8 @@ Clone the repo
 
     ![licence6](img/licence6.png)
 
-6. Symbolic link - Create a `.bat` file
 
-    Enabling script execution
-   
-    Run `Windows PowerShell as Admin`
-
-    ```s
-    Set-ExecutionPolicy RemoteSigned
-    ```
-    try if not work
-   ```s
-   Set-ExecutionPolicy Unrestricted
-   ```
-    
-    Run Create-bat.ps1 `with PowerShell` 
-    ```s
-    create-bat.ps1
-    ```
-    Run `Burp.bat` on directory after run command create .bat
-8. Symbolic link - Create a `vbs` file
-
-    Run create-ps.ps1 `with PowerShell`
-    ```s
-    create-vbs.ps1
-    ```
-    Run `BurpsuiteProfessional.vbs` on directory after run command create .vbs
-
-    Disabling script execution
-    ```s
-    Set-ExecutionPolicy Default
-    ```
-10. Create shortcut and you can find it on start
+4. Create shortcut and you can find it on start
 
     Create short-cut `BurpsuiteProfessional.vbs` we got `Shortcut - BurpsuiteProfessional.vbs`
 
