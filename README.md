@@ -123,56 +123,25 @@ Clone the repo
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 #### Linux/Ubuntu
-1. Open folder `/BurpActivator` (make sure in `/BurpActivator` directory)
-2. Download Burpsuite (jar version)
+
+1. Requirements
+ - Run with sudo/root privileges
+ - Java 18 or 21 (script can install OpenJDK 21 if missing)
+2. Run the installer
    ```sh
-    curl "https://portswigger-cdn.net/burp/releases/download?product=pro&version=&type=jar" -o burpsuite_pro.jar 
+   sudo bash install-linux.sh
    ```
-3. Active 
-    Active it like [windows](https://github.com/nvth/BurpActivator?tab=readme-ov-file#windows)
-
-4. Make a symbolic link
-
-    4.1. Change path (maybe using sudo)
-
-    Open `burp` and change path to loader.jar and burpsuite_pro.jar 
-
-    On end of `burp` file, change it from `javaagent:loader...`
-    
-    ```sh
-    javaagent:/path/to/loader.jar -noverify -jar /path/to/burpsuite_pro.jar
-    ```
-    4.2. Create symbolic link (maybe using sudo)
-
-    ```sh
-    ln -s /path/to/burp /usr/local/bin/burp
-    ```
-    4.3. Run `burp`
-
-    `Windows + Alt + T` and type `sudo burp` and enjoy it
-
-
-##### Switch java on ubuntu 
-On ubuntu, maybe error when using `loader.jar`, so
-
-1.  Switch jdk to jdk18
-```sh
-sudo apt-get install openjdk-18-jdk
-```
-
-```sh
-update-java-alternatives --list
-```
-
-```sh
-sudo update-java-alternatives --set /path/to/java/version
-```
-
-```sh
-sudo update-alternatives --config java
-```
-
-use `loader_ubuntu.jar` instead of `loader.jar` 
+   The script will download required files, set up Java (if needed),
+   create a launcher and a desktop shortcut.
+3. Files are installed to:
+   - `<repo>/burpsuite_nvth/bin` (launcher: `burp`)
+   - `<repo>/burpsuite_nvth/data` (downloads: `burpsuite_pro.jar`, `loader-ubuntu.jar`, JDK, icon)
+   - `~/.local/share/applications/BurpSuiteProfessional.desktop` (desktop shortcut)
+   - `/usr/local/bin/burp` (symlink; falls back to `~/.local/bin/burp` if no sudo)
+   - Uninstall script: `<repo>/burpsuite_nvth/uninstall.sh`
+4. Auto-start after install
+   Before the script finishes, it will automatically open `loader-ubuntu.jar`
+   and then launch `burpsuite_pro.jar` to activate.
 
 <!-- USAGE EXAMPLES -->
 ## Usage
