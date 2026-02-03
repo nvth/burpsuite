@@ -118,7 +118,7 @@ Clone the repo
     Uninstall script: `C:\burpsuite_nvth\uninstall.ps1` (removes the entire `C:\burpsuite_nvth` folder)
 3. Activation and Start Menu shortcut
 
-   See `activation_windows.md` for the full, illustrated steps.
+   See [activation_windows.md](activation_windows.md) for the full, illustrated steps.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
