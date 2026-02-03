@@ -11,7 +11,15 @@ $IconUrl = "https://github.com/nvth/burpsuite/releases/download/v2024.7.4/burppr
 $IconName = "burppro.ico"
 
 # Install directories
-$rootDir = Join-Path -Path $env:SystemDrive -ChildPath "burpsuite_nvth"
+$scriptDir = Split-Path -Parent $PSCommandPath
+$candidateRoot = Join-Path -Path $scriptDir -ChildPath "burpsuite_nvth"
+$candidateBin = Join-Path -Path $candidateRoot -ChildPath "bin"
+$candidateData = Join-Path -Path $candidateRoot -ChildPath "data"
+if ((Test-Path $candidateBin -PathType Container) -and (Test-Path $candidateData -PathType Container)) {
+    $rootDir = $candidateRoot
+} else {
+    $rootDir = Join-Path -Path $env:SystemDrive -ChildPath "burpsuite_nvth"
+}
 $binDir = Join-Path -Path $rootDir -ChildPath "bin"
 $dataDir = Join-Path -Path $rootDir -ChildPath "data"
 $uninstallPath = Join-Path -Path $rootDir -ChildPath "uninstall.ps1"
@@ -220,7 +228,7 @@ if (-not (Test-Admin)) {
     exit 1
 }
 
-$rootDir = Join-Path -Path $env:SystemDrive -ChildPath "burpsuite_nvth"
+$rootDir = "__ROOT_DIR__"
 $binDir = Join-Path -Path $rootDir -ChildPath "bin"
 $dataDir = Join-Path -Path $rootDir -ChildPath "data"
 
@@ -245,6 +253,7 @@ $self = $PSCommandPath
 Write-Host "Uninstall completed. This script will remove itself and $rootDir."
 Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "timeout /t 2 /nobreak >nul & rmdir /s /q `"$rootDir`" & del /f /q `"$self`"" -WindowStyle Hidden
 '@
+$uninstallScript = $uninstallScript -replace "__ROOT_DIR__", [Regex]::Escape($rootDir)
 Set-Content -Path $uninstallPath -Value $uninstallScript -Encoding ASCII
 Write-Host "Uninstall script created at: $uninstallPath"
 
@@ -257,8 +266,9 @@ Step 1: Open PowerShell as Administrator.
 Step 2: Enable script execution:
   Set-ExecutionPolicy Unrestricted
 Step 3: Run the uninstall script:
-  C:\burpsuite_nvth\uninstall.ps1
+  __ROOT_DIR__\uninstall.ps1
 '@
+$uninstallInfo = $uninstallInfo -replace "__ROOT_DIR__", [Regex]::Escape($rootDir)
 Set-Content -Path $uninstallInfoPath -Value $uninstallInfo -Encoding ASCII
 Write-Host "Uninstall instructions created at: $uninstallInfoPath"
 

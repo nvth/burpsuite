@@ -118,7 +118,16 @@ Clone the repo
     Uninstall script: `C:\burpsuite_nvth\uninstall.ps1` (removes the entire `C:\burpsuite_nvth` folder)
 3. Activation and Start Menu shortcut
 
-   See [capsule_windows.md](capsule_windows.md) for the full, illustrated steps.
+   See [capsule_windows.md](capsule_windows.md) for the full, illustrated steps.  
+   Note (important): If you move the install folder, make sure `burpsuite_nvth` sits next to the script, then re-run the script.
+   Example:
+   ```
+   burpsuite/
+   -- install.ps1
+   -- burpsuite_nvth/
+     |_ bin/
+     |_ data/
+   ```
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -142,7 +151,16 @@ Clone the repo
 4. Auto-start after install
    Before the script finishes, it will automatically open `loader-ubuntu.jar`
    and then launch `burpsuite_pro.jar` to activate.
-5. After activate, on terminal, type `burp`, happy hacking.
+5. If you move the install folder, make sure `burpsuite_nvth` sits next to the script, then re-run the script.
+   Example:
+   ```
+   burpsuite/
+   -- install-linux.sh
+   -- burpsuite_nvth/
+      |_ bin/
+      |_ data/
+   ```
+6. After activate, on terminal, type `burp`, happy hacking.
 
 <!-- USAGE EXAMPLES -->
 ## Usage
