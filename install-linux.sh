@@ -4,6 +4,7 @@ set -euo pipefail
 BURP_URL="https://portswigger-cdn.net/burp/releases/download?product=pro&version=&type=jar"
 JDK_URL="https://github.com/nvth/burpsuite/releases/download/v2024.7.4/jdk-21.0.9_linux-x64_bin.tar.gz"
 LOADER_UBUNTU_URL="https://github.com/nvth/burpsuite/releases/download/v2024.7.4/loader-ubuntu.jar"
+ICON_URL="https://github.com/nvth/burpsuite/releases/download/v2024.7.4/burppro.ico"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$SCRIPT_DIR/burpsuite_nvth"
 DATA_DIR="$ROOT_DIR/data"
@@ -30,9 +31,6 @@ fi
 
 mkdir -p "$DATA_DIR" "$BIN_DIR"
 
-if [[ ! -f "$ICON_PATH" && -f "$SCRIPT_DIR/burppro.ico" ]]; then
-  cp -f "$SCRIPT_DIR/burppro.ico" "$ICON_PATH"
-fi
 
 download_file() {
   local url="$1"
@@ -228,6 +226,14 @@ if [[ ! -f "$LOADER_STD" && -f "$SCRIPT_DIR/loader.jar" ]]; then
 fi
 ensure_valid_jar "$LOADER_UBUNTU" "$LOADER_UBUNTU_URL" "loader-ubuntu.jar"
 
+if [[ ! -f "$ICON_PATH" ]]; then
+  if [[ -f "$SCRIPT_DIR/burppro.ico" ]]; then
+    cp -f "$SCRIPT_DIR/burppro.ico" "$ICON_PATH"
+  else
+    download_file "$ICON_URL" "$ICON_PATH" "burppro.ico"
+  fi
+fi
+
 if [[ -f "$LOADER_UBUNTU" ]]; then
   echo "Using loader-ubuntu.jar (data)"
   ACTIVE_LOADER="$LOADER_UBUNTU"
@@ -284,7 +290,38 @@ if [[ -z "$JAVA_BIN" ]]; then
   exit 1
 fi
 
-"$JAVA_BIN" --add-opens=java.desktop/javax.swing=ALL-UNNAMED \
+get_total_mem_gb() {
+  local kb
+  kb="$(awk '/MemTotal:/ {print $2}' /proc/meminfo 2>/dev/null || true)"
+  if [[ -z "$kb" ]]; then
+    echo "0"
+    return 1
+  fi
+  echo $((kb / 1024 / 1024))
+  return 0
+}
+
+get_java_opts() {
+  local mem_gb
+  mem_gb="$(get_total_mem_gb || true)"
+  if [[ -z "$mem_gb" || "$mem_gb" -le 0 ]]; then
+    echo ""
+    return 0
+  fi
+  if [[ "$mem_gb" -lt 16 ]]; then
+    echo ""
+    return 0
+  fi
+  if [[ "$mem_gb" -lt 32 ]]; then
+    echo "-Xmx8g"
+    return 0
+  fi
+  echo ""
+}
+
+JAVA_OPTS="$(get_java_opts)"
+
+"$JAVA_BIN" $JAVA_OPTS --add-opens=java.desktop/javax.swing=ALL-UNNAMED \
   --add-opens=java.base/java.lang=ALL-UNNAMED \
   --add-opens=java.base/jdk.internal.org.objectweb.asm=ALL-UNNAMED \
   --add-opens=java.base/jdk.internal.org.objectweb.asm.tree=ALL-UNNAMED \
@@ -438,6 +475,37 @@ resolve_java_bin() {
   return 1
 }
 
+get_total_mem_gb() {
+  local kb
+  kb="$(awk '/MemTotal:/ {print $2}' /proc/meminfo 2>/dev/null || true)"
+  if [[ -z "$kb" ]]; then
+    echo "0"
+    return 1
+  fi
+  # Round down to whole GB
+  echo $((kb / 1024 / 1024))
+  return 0
+}
+
+get_java_opts() {
+  local mem_gb
+  mem_gb="$(get_total_mem_gb || true)"
+  if [[ -z "$mem_gb" || "$mem_gb" -le 0 ]]; then
+    echo ""
+    return 0
+  fi
+  if [[ "$mem_gb" -lt 16 ]]; then
+    echo ""
+    return 0
+  fi
+  if [[ "$mem_gb" -lt 32 ]]; then
+    echo "-Xmx8g"
+    return 0
+  fi
+  # >= 32GB: no Xmx override
+  echo ""
+}
+
 run_as_user() {
   local cmd="$1"
   if [[ -n "${SUDO_USER:-}" && "$SUDO_USER" != "root" ]]; then
@@ -464,11 +532,12 @@ JAVA_BIN="$(resolve_java_bin || true)"
 if [[ -z "$JAVA_BIN" ]]; then
   echo "Java not found. Please install Java 18 or 21."
 else
+  JAVA_OPTS="$(get_java_opts)"
   if [[ -f "$ACTIVE_LOADER" ]]; then
     run_as_user "\"$JAVA_BIN\" -jar \"$ACTIVE_LOADER\" >/dev/null 2>&1 &"
     sleep 2
   fi
-  run_as_user "\"$JAVA_BIN\" --add-opens=java.desktop/javax.swing=ALL-UNNAMED --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/jdk.internal.org.objectweb.asm=ALL-UNNAMED --add-opens=java.base/jdk.internal.org.objectweb.asm.tree=ALL-UNNAMED --add-opens=java.base/jdk.internal.org.objectweb.asm.Opcodes=ALL-UNNAMED -javaagent:\"$ACTIVE_LOADER\" -noverify -jar \"$BURP_JAR\" >/dev/null 2>&1 &"
+  run_as_user "\"$JAVA_BIN\" ${JAVA_OPTS} --add-opens=java.desktop/javax.swing=ALL-UNNAMED --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/jdk.internal.org.objectweb.asm=ALL-UNNAMED --add-opens=java.base/jdk.internal.org.objectweb.asm.tree=ALL-UNNAMED --add-opens=java.base/jdk.internal.org.objectweb.asm.Opcodes=ALL-UNNAMED -javaagent:\"$ACTIVE_LOADER\" -noverify -jar \"$BURP_JAR\" >/dev/null 2>&1 &"
 fi
 
 echo ""
