@@ -100,7 +100,7 @@ Clone the repo
 #### Windows
 
 1. Requirements
- - JDK 21 installed
+ - JDK 21 installed (script can install OpenJDK 21 if missing)
 2. Open PowerShell as Administrator (required)
     ```s
     Set-ExecutionPolicy RemoteSigned
