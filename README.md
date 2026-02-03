@@ -95,7 +95,7 @@ Requirements:
 ### Installation
 Clone the repo
    ```sh
-    git clone https://github.com/nvth/BurpActivator.git
+    git clone https://github.com/nvth/burpsuite.git
    ```
 #### Windows
 
