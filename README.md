@@ -9,7 +9,8 @@
   <h3 align="center">BurpSuite Pro Compatibility Pack</h3>
 
   <p align="center">
-    This product is not a medicine and is not intended to replace medical treatment!
+    This product is not a medicine and is not intended to replace medical treatment!<br>  
+    <i>Please read the usage instructions carefully before use.</i>
     <br />
     <a href="https://github.com/nvth/BurpActivator?tab=readme-ov-file"><strong>Explore the docs »</strong></a>
     <br />
@@ -165,7 +166,22 @@ Clone the repo
 <!-- USAGE EXAMPLES -->
 ## Usage
 
-Script all in one update soon.
+All-in-one script update coming soon.
+
+Note: If Burp or your PC/laptop crashes or freezes, the installer auto-detects RAM and sets a minimum of 4GB for Burp.
+If your machine has less than 8GB of RAM, edit the launcher:
+- Windows: `burpsuite_nvth/bin/burp.bat`
+- Linux: `burpsuite_nvth/bin/burp`
+
+Example (default 4G):
+```
+java -Xmx4G --add-opens...
+```
+
+Change `-Xmx4G` to `-Xmx2G`, or remove the `-Xmx` option entirely:
+```
+java -Xmx2G --add-opens...
+```
 
 _For more examples, please refer to the [Documentation](https://example.com)_
 
