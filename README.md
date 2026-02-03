@@ -142,6 +142,7 @@ Clone the repo
 4. Auto-start after install
    Before the script finishes, it will automatically open `loader-ubuntu.jar`
    and then launch `burpsuite_pro.jar` to activate.
+5. After activate, on terminal, type `burp`, happy hacking.
 
 <!-- USAGE EXAMPLES -->
 ## Usage
