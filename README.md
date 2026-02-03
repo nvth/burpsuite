@@ -6,10 +6,10 @@
     <img src="img/logo.png" alt="Logo" width="80" height="80">
   </a>
 
-  <h3 align="center">Burpsuite Pro Activator</h3>
+  <h3 align="center">BurpSuite Pro Compatibility Pack</h3>
 
   <p align="center">
-    Sản phẩm không phải là thuốc, không có tác dụng thay thế thuốc chữa bệnh!
+    This product is not a medicine and is not intended to replace medical treatment!
     <br />
     <a href="https://github.com/nvth/BurpActivator?tab=readme-ov-file"><strong>Explore the docs »</strong></a>
     <br />
@@ -57,7 +57,7 @@
 
 [![Product Name Screen Shot][product-screenshot]](https://github.com/nvth/BurpActivator)
 
-This is Burpsuite Pro for free.
+This is Burpsuite Pro Pack.
 
 Here's why:
 * Save your money
@@ -118,7 +118,7 @@ Clone the repo
     Uninstall script: `C:\burpsuite_nvth\uninstall.ps1` (removes the entire `C:\burpsuite_nvth` folder)
 3. Activation and Start Menu shortcut
 
-   See [activation_windows.md](activation_windows.md) for the full, illustrated steps.
+   See [capsule_windows.md](capsule_windows.md) for the full, illustrated steps.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -162,7 +162,7 @@ _For more examples, please refer to the [Documentation](https://example.com)_
 - [ ] Add "components" document to easily copy & paste sections of the readme
 - [ ] Multi-language Support
     - [ ] English
-    - [ ] US
+    - [ ] Vietnamese
 
 See the [open issues](https://github.com/nvth/BurpActivator/issues) for a full list of proposed features (and known issues).
 
@@ -186,8 +186,8 @@ Don't forget to give the project a star! Thanks again!
 
 ### Top contributors:
 
-<a href="https://github.com/nvth/BurpActivator/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=nvth/BurpActivator" alt="contrib.rocks image" />
+<a href="https://github.com/nvth/burpsuite/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=nvth/burpsuite" alt="contrib.rocks image" />
 </a>
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
@@ -208,7 +208,7 @@ Distributed under the MIT License. See `LICENSE.txt` for more information.
 
 kevin - [@kevin](https://twitter.com/) - email@kevin.com
 
-Project Link: [https://github.com/nvth/BurpActivator](https://github.com/nvth/BurpActivator)
+Project Link: [https://github.com/nvth/burpsuite](https://github.com/nvth/burpsuite)
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -216,12 +216,12 @@ Project Link: [https://github.com/nvth/BurpActivator](https://github.com/nvth/Bu
 <!-- MARKDOWN LINKS & IMAGES -->
 <!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
 
-[contributors-url]: https://github.com/nvth/BurpActivator/graphs/contributors
+[contributors-url]: https://github.com/nvth/burpsuite/graphs/contributors
 
 [forks-url]: https://github.com/othneildrew/Best-README-Template/network/members
-[stars-url]: https://img.shields.io/github/stars/nvth/BurpActivator
-[issues-url]: https://github.com/nvth/BurpActivator/issues
-[license-url]: https://github.com/nvth/BurpActivator/blob/master/LICENSE.txt
+[stars-url]: https://img.shields.io/github/stars/nvth/burpsuite
+[issues-url]: https://github.com/nvth/burpsuite/issues
+[license-url]: https://github.com/nvth/burpsuite/blob/master/LICENSE.txt
 [linkedin-shield]: https://img.shields.io/badge/-LinkedIn-black.svg?style=for-the-badge&logo=linkedin&colorB=555
 [linkedin-url]: https://linkedin.com/in/#
 [product-screenshot]: img/image.png
