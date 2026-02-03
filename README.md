@@ -87,14 +87,10 @@ The following steps must be followed.
 
 ### Prerequisites
 
-This is an example of how to list things you need to use the software and how to install them.
-* java on linux
-  ```sh
-  sudo apt-get install openjdk-18-jdk
-  ```
-* java on windows  
-
-  [Download here](https://www.oracle.com/java/technologies/downloads/)
+Requirements:
+* Windows: Run PowerShell as Administrator
+* Linux: Run with sudo/root privileges
+* Java 21 installed
 
 ### Installation
 Clone the repo
@@ -103,63 +99,26 @@ Clone the repo
    ```
 #### Windows
 
-1. Requirement
- - Install java 21 or jdk8  
-2. Open Powershell (if not work, run powershell as admin)
+1. Requirements
+ - JDK 21 installed
+2. Open PowerShell as Administrator (required)
     ```s
     Set-ExecutionPolicy RemoteSigned
     Set-ExecutionPolicy Unrestricted
     ```
     Run `install.ps1`
 
-    Disabling script execution
+    Revert the execution policy (optional)
     ```s
     Set-ExecutionPolicy Default
     ```
-4. Active
+    Files are installed to:
+    - `C:\burpsuite_nvth\bin` (launchers: `burp.bat`, `BurpSuiteProfessional.vbs`)
+    - `C:\burpsuite_nvth\data` (downloads: `burpsuite_pro.jar`, `loader.jar`, JDK installer, icon)
+    Uninstall script: `C:\burpsuite_nvth\uninstall.ps1` (removes the entire `C:\burpsuite_nvth` folder)
+3. Activation and Start Menu shortcut
 
-    Edit your name or anything (it will be signed on burp like ---Licence to You---)
-
-    ![licence1](img/licence1.png)  
-    
-    Paste `Licence Key` and `Next`
-
-    ![licence2](img/licence2.png)
-
-    Manual activation
-    
-    ![licence3](img/licence3.png)
-
-    `Copy Request` from `Manual Activation` windows Burpsuite and Paste it to `Activation Request` of `Loader.jar`
-
-    ![licence4](img/licence4.png)
-
-    ![licence4.1](img/licence4.1.png)
-
-    from `Loader.jar` after paste `Activation Request`, got `Activation Response`
-
-    ![licence5](img/licence5.png)
-
-    copy it and paste to `Paste Response` in Title 3 Burpsuite `Manual Activation` windows
-
-    ![licence5.1](img/licence5.1.png) 
-
-    Enjoy it, Burpsuite pro ready for you when run `loader.jar`, but if you wanna run burpsuite pro like a symlink, please follow:
-
-    ![licence6](img/licence6.png)
-
-
-5. Create shortcut and you can find it on start
-
-    Create short-cut `BurpsuiteProfessional.vbs` we got `Shortcut - BurpsuiteProfessional.vbs`
-
-    Change icon this shortcut to burpsuite professional using `burppro.ico` in directory `/BurpActivator`
-
-    rename `Shortcut - BurpsuiteProfessional.vbs` to `BurpsuiteProfessional.vbs` and copy it to `C:\ProgramData\Microsoft\Windows\Start Menu\Programs\`
-
-    On windows, press `Windows` key and find burp. You can find it on here.
-
-    ![findburp](img/findburp.png)
+   See `activation_windows.md` for the full, illustrated steps.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -298,4 +257,3 @@ Project Link: [https://github.com/nvth/BurpActivator](https://github.com/nvth/Bu
 [linkedin-url]: https://linkedin.com/in/#
 [product-screenshot]: img/image.png
 [java]: https://img.shields.io/badge/Java-ED8B00?style=for-the-badge&logo=openjdk&logoColor=white
-
