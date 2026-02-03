@@ -74,7 +74,7 @@ _Thanks Dr.FarFar for this loader_
 
 Builder:
 
-* [![java][java]][java]
+[![java][java]][java] [![chatgpt][chatgpt]][chatgpt]
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -257,3 +257,4 @@ Project Link: [https://github.com/nvth/BurpActivator](https://github.com/nvth/Bu
 [linkedin-url]: https://linkedin.com/in/#
 [product-screenshot]: img/image.png
 [java]: https://img.shields.io/badge/Java-ED8B00?style=for-the-badge&logo=openjdk&logoColor=white
+[chatgpt]: https://img.shields.io/badge/ChatGPT-75a99c?logo=OpenAI&logoColor=white
