@@ -134,6 +134,54 @@ function Get-JavaMajorVersion {
     return $null
 }
 
+function Find-InstalledJava {
+    $candidates = New-Object System.Collections.Generic.List[string]
+
+    # Check JAVA_HOME from the current process and both persistent scopes.
+    foreach ($scope in @('Process', 'User', 'Machine')) {
+        $javaHome = [Environment]::GetEnvironmentVariable('JAVA_HOME', $scope)
+        if ([string]::IsNullOrWhiteSpace($javaHome)) { continue }
+        [void]$candidates.Add((Join-Path $javaHome 'bin\java.exe'))
+    }
+
+    # Check the Java executable already available on PATH.
+    $javaCommand = Get-Command java.exe -CommandType Application -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    if ($javaCommand -and $javaCommand.Source) {
+        [void]$candidates.Add($javaCommand.Source)
+    }
+
+    # Java installers commonly register their installation directory here,
+    # even when they do not add java.exe to PATH.
+    $registryRoots = @(
+        'HKLM:\SOFTWARE\JavaSoft\JDK',
+        'HKLM:\SOFTWARE\JavaSoft\Java Runtime Environment',
+        'HKLM:\SOFTWARE\WOW6432Node\JavaSoft\JDK',
+        'HKLM:\SOFTWARE\WOW6432Node\JavaSoft\Java Runtime Environment'
+    )
+    foreach ($registryRoot in $registryRoots) {
+        if (-not (Test-Path -LiteralPath $registryRoot)) { continue }
+        foreach ($registryKey in @(Get-ChildItem -LiteralPath $registryRoot -ErrorAction SilentlyContinue)) {
+            $javaHomeProperty = Get-ItemProperty -LiteralPath $registryKey.PSPath -Name JavaHome -ErrorAction SilentlyContinue
+            if ($javaHomeProperty -and $javaHomeProperty.JavaHome) {
+                [void]$candidates.Add((Join-Path $javaHomeProperty.JavaHome 'bin\java.exe'))
+            }
+        }
+    }
+
+    foreach ($candidate in $candidates | Select-Object -Unique) {
+        if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) { continue }
+        $major = Get-JavaMajorVersion -JavaPath $candidate
+        if ($major -ge 21) {
+            return [pscustomobject]@{
+                Path  = $candidate
+                Major = $major
+            }
+        }
+    }
+    return $null
+}
+
 # Ensure install directories exist
 $installStep = 'Create installation directories'
 Write-Host "[INFO] [$installStep] Starting this step."
@@ -171,72 +219,82 @@ if (Test-Path $loaderPath) { Write-Host "Installed" } else { Write-Host "Not ins
 Write-Host " - $BatName : " -NoNewline
 if (Test-Path $batPath) { Write-Host "Installed" } else { Write-Host "Not installed" }
 
-# Check portable Java 21 and install if missing
-$installStep = 'Install portable Java'
+# Prefer Java 21+ already installed on the machine before checking portable Java.
+$installStep = 'Ensure Java 21+'
 Write-Host "[INFO] [$installStep] Starting this step."
 Write-Host ""
-Write-Host "Checking portable Java 21..."
-$javaMajor = Get-JavaMajorVersion -JavaPath $javaExePath
+Write-Host "Checking installed Java 21 or newer..."
+$installedJava = Find-InstalledJava
 
-if ($javaMajor -ge 21) {
-    Write-Host "Portable Java $javaMajor detected at $javaExePath."
+if ($installedJava) {
+    $javaExePath = $installedJava.Path
+    $javaMajor = $installedJava.Major
+    Write-Host "Installed Java $javaMajor detected at $javaExePath."
 } else {
-    Write-Host "Portable Java 21 not found in $jdkDir."
-    $confirm = Read-Host "Do you want to download portable JDK 21 for this Burp installation now? (Y/N)"
-    if ($confirm -notmatch '^(?i)y(es)?$') {
-        Write-Host "Installation canceled by user."
-        exit 1
-    }
-    Write-Host "Downloading portable JDK 21..."
-    Write-Host "URL: $JdkUrl"
-    Write-Host "Save at $jdkArchivePath"
-
-    & curl.exe -L --fail -o $jdkArchivePath $JdkUrl
-    $exit = $LASTEXITCODE
-    if ($exit -ne 0 -or -not (Test-Path $jdkArchivePath)) {
-        Write-Host "Download Failed: $exit"
-        if ($exit -eq 0) { exit 1 }
-        exit $exit
-    }
-
-    Write-Host "Extracting portable JDK 21..."
-    $jdkExtractDir = Join-Path -Path $dataDir -ChildPath "jdk_extract"
-    if (Test-Path $jdkExtractDir) {
-        Remove-Item -Recurse -Force $jdkExtractDir
-    }
-    New-Item -ItemType Directory -Path $jdkExtractDir -Force | Out-Null
-
-    try {
-        Expand-Archive -Path $jdkArchivePath -DestinationPath $jdkExtractDir -Force
-    } catch {
-        throw
-    }
-
-    $extractedJava = Get-ChildItem -Path $jdkExtractDir -Recurse -Filter "java.exe" |
-        Where-Object { $_.FullName -match '\\bin\\java\.exe$' } |
-        Select-Object -First 1
-
-    if (-not $extractedJava) {
-        Write-Host "Failed to find java.exe in extracted JDK archive."
-        exit 1
-    }
-
-    $extractedJdkRoot = Split-Path -Parent (Split-Path -Parent $extractedJava.FullName)
-    if (Test-Path $jdkDir) {
-        Remove-Item -Recurse -Force $jdkDir
-    }
-    Move-Item -LiteralPath $extractedJdkRoot -Destination $jdkDir -Force
-    if (Test-Path $jdkExtractDir) {
-        Remove-Item -Recurse -Force $jdkExtractDir
-    }
-
+    Write-Host "No installed Java 21 or newer was found."
+    Write-Host "Checking portable Java 21..."
     $javaMajor = Get-JavaMajorVersion -JavaPath $javaExePath
 
     if ($javaMajor -ge 21) {
-        Write-Host "Portable Java 21 installed successfully at $jdkDir."
+        Write-Host "Portable Java $javaMajor detected at $javaExePath."
     } else {
-        Write-Host "Warning: portable Java 21 still not detected at $javaExePath."
-        exit 1
+        Write-Host "Portable Java 21 not found in $jdkDir."
+        $confirm = Read-Host "Do you want to download portable JDK 21 for this Burp installation now? (Y/N)"
+        if ($confirm -notmatch '^(?i)y(es)?$') {
+            Write-Host "Installation canceled by user."
+            exit 1
+        }
+        Write-Host "Downloading portable JDK 21..."
+        Write-Host "URL: $JdkUrl"
+        Write-Host "Save at $jdkArchivePath"
+
+        & curl.exe -L --fail -o $jdkArchivePath $JdkUrl
+        $exit = $LASTEXITCODE
+        if ($exit -ne 0 -or -not (Test-Path $jdkArchivePath)) {
+            Write-Host "Download Failed: $exit"
+            if ($exit -eq 0) { exit 1 }
+            exit $exit
+        }
+
+        Write-Host "Extracting portable JDK 21..."
+        $jdkExtractDir = Join-Path -Path $dataDir -ChildPath "jdk_extract"
+        if (Test-Path $jdkExtractDir) {
+            Remove-Item -Recurse -Force $jdkExtractDir
+        }
+        New-Item -ItemType Directory -Path $jdkExtractDir -Force | Out-Null
+
+        try {
+            Expand-Archive -Path $jdkArchivePath -DestinationPath $jdkExtractDir -Force
+        } catch {
+            throw
+        }
+
+        $extractedJava = Get-ChildItem -Path $jdkExtractDir -Recurse -Filter "java.exe" |
+            Where-Object { $_.FullName -match '\\bin\\java\.exe$' } |
+            Select-Object -First 1
+
+        if (-not $extractedJava) {
+            Write-Host "Failed to find java.exe in extracted JDK archive."
+            exit 1
+        }
+
+        $extractedJdkRoot = Split-Path -Parent (Split-Path -Parent $extractedJava.FullName)
+        if (Test-Path $jdkDir) {
+            Remove-Item -Recurse -Force $jdkDir
+        }
+        Move-Item -LiteralPath $extractedJdkRoot -Destination $jdkDir -Force
+        if (Test-Path $jdkExtractDir) {
+            Remove-Item -Recurse -Force $jdkExtractDir
+        }
+
+        $javaMajor = Get-JavaMajorVersion -JavaPath $javaExePath
+
+        if ($javaMajor -ge 21) {
+            Write-Host "Portable Java 21 installed successfully at $jdkDir."
+        } else {
+            Write-Host "Warning: portable Java 21 still not detected at $javaExePath."
+            exit 1
+        }
     }
 }
 

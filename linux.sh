@@ -112,28 +112,97 @@ ensure_valid_jar() {
 }
 
 get_java_major() {
-  local java_cmd="java"
-  if [[ -n "${JAVA_HOME:-}" && -x "$JAVA_HOME/bin/java" ]]; then
-    java_cmd="$JAVA_HOME/bin/java"
-  elif ! command -v java >/dev/null 2>&1; then
-    return 1
+  local java_cmd="${1:-}"
+  if [[ -z "$java_cmd" ]]; then
+    if [[ -n "${JAVA_HOME:-}" && -x "$JAVA_HOME/bin/java" ]]; then
+      java_cmd="$JAVA_HOME/bin/java"
+    elif command -v java >/dev/null 2>&1; then
+      java_cmd="$(command -v java)"
+    else
+      return 1
+    fi
   fi
   local line
   line="$("$java_cmd" -version 2>&1 | head -n 1)"
+  if [[ $line =~ \"1\.([0-9]+) ]]; then
+    echo "${BASH_REMATCH[1]}"
+    return 0
+  fi
   if [[ $line =~ \"([0-9]+)\. ]]; then
     echo "${BASH_REMATCH[1]}"
     return 0
   fi
-  if [[ $line =~ \"1\.([0-9]+) ]]; then
+  if [[ $line =~ \"([0-9]+)\" ]]; then
     echo "${BASH_REMATCH[1]}"
     return 0
   fi
   return 1
 }
 
+find_installed_java() {
+  local candidate major
+  local -a candidates=()
+
+  if [[ -n "${JAVA_HOME:-}" ]]; then
+    candidates+=("$JAVA_HOME/bin/java")
+  fi
+  if command -v java >/dev/null 2>&1; then
+    candidates+=("$(command -v java)")
+  fi
+
+  # Include Java installations managed by the system alternatives database.
+  if command -v update-alternatives >/dev/null 2>&1; then
+    while IFS= read -r candidate; do
+      [[ -n "$candidate" ]] && candidates+=("$candidate")
+    done < <(update-alternatives --list java 2>/dev/null || true)
+  fi
+
+  # Check common system-wide Java installation locations, even when Java is
+  # not exported through PATH or JAVA_HOME.
+  for candidate in \
+    /usr/lib/jvm/*/bin/java \
+    /usr/java/*/bin/java \
+    /usr/local/java/*/bin/java \
+    /opt/java/*/bin/java \
+    /opt/*/bin/java \
+    /home/*/.sdkman/candidates/java/*/bin/java \
+    /root/.sdkman/candidates/java/*/bin/java; do
+    [[ -x "$candidate" ]] && candidates+=("$candidate")
+  done
+
+  for candidate in "${candidates[@]}"; do
+    [[ -x "$candidate" ]] || continue
+    major="$(get_java_major "$candidate" || true)"
+    if [[ "$major" =~ ^[0-9]+$ ]] && (( major >= 21 )); then
+      echo "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+find_portable_java() {
+  local candidate major
+  for candidate in "$DATA_DIR"/jdk-*/bin/java; do
+    [[ -x "$candidate" ]] || continue
+    major="$(get_java_major "$candidate" || true)"
+    if [[ "$major" =~ ^[0-9]+$ ]] && (( major >= 21 )); then
+      echo "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
 install_java21() {
-  local existing_dir
-  existing_dir="$(ls -d "$DATA_DIR"/jdk-* 2>/dev/null | head -n 1 || true)"
+  local existing_dir=""
+  local candidate
+  for candidate in "$DATA_DIR"/jdk-*; do
+    if [[ -d "$candidate" && -x "$candidate/bin/java" ]]; then
+      existing_dir="$candidate"
+      break
+    fi
+  done
   if [[ -n "$existing_dir" ]]; then
     echo "Found existing JDK at $existing_dir. Using it."
     export JAVA_HOME="$existing_dir"
@@ -199,20 +268,34 @@ EOF
   echo "Environment file created: $ENV_FILE"
 }
 
-JAVA_MAJOR="$(get_java_major || true)"
-if [[ -z "$JAVA_MAJOR" || ( "$JAVA_MAJOR" != "18" && "$JAVA_MAJOR" != "21" ) ]]; then
-  echo "Java 18 or 21 is required."
+JAVA_BIN="$(find_installed_java || true)"
+if [[ -n "$JAVA_BIN" ]]; then
+  JAVA_MAJOR="$(get_java_major "$JAVA_BIN" || true)"
+  echo "Using installed Java $JAVA_MAJOR: $JAVA_BIN"
+else
+  JAVA_BIN="$(find_portable_java || true)"
+  if [[ -n "$JAVA_BIN" ]]; then
+    JAVA_MAJOR="$(get_java_major "$JAVA_BIN" || true)"
+    echo "Using portable Java $JAVA_MAJOR: $JAVA_BIN"
+  fi
+fi
+
+if [[ -z "$JAVA_BIN" ]]; then
+  echo "No installed Java 21 or newer was found."
+  echo "A portable JDK 21 will be used as a fallback."
   read -r -p "Do you want to download and install OpenJDK 21 now? (Y/N) " answer
   if [[ ! $answer =~ ^[Yy]([Ee][Ss])?$ ]]; then
-    echo "This app requires Java 18 or 21. Install it and re-run this script."
+    echo "This app requires Java 21 or newer. Install it and re-run this script."
     exit 1
   fi
   install_java21
-  JAVA_MAJOR="$(get_java_major || true)"
-  if [[ "$JAVA_MAJOR" != "18" && "$JAVA_MAJOR" != "21" ]]; then
-    echo "Java 21 install did not complete successfully. Please install Java 18 or 21 and re-run."
+  JAVA_BIN="$JAVA_HOME/bin/java"
+  JAVA_MAJOR="$(get_java_major "$JAVA_BIN" || true)"
+  if [[ ! "$JAVA_MAJOR" =~ ^[0-9]+$ ]] || (( JAVA_MAJOR < 21 )); then
+    echo "Java 21 install did not complete successfully. Please install Java 21 or newer and re-run."
     exit 1
   fi
+  echo "Using portable Java $JAVA_MAJOR: $JAVA_BIN"
 fi
 
 ensure_valid_jar "$BURP_JAR" "$BURP_URL" "burpsuite_pro.jar"
@@ -241,8 +324,10 @@ else
   exit 1
 fi
 
-cat > "$LAUNCHER" <<'EOF'
-#!/usr/bin/env bash
+{
+  printf '%s\n' '#!/usr/bin/env bash'
+  printf 'SELECTED_JAVA_BIN=%q\n' "$JAVA_BIN"
+  cat <<'EOF'
 set -euo pipefail
 
 SCRIPT_PATH="${BASH_SOURCE[0]}"
@@ -268,7 +353,9 @@ if [[ ! -f "$BURP_JAR" ]]; then
 fi
 
 JAVA_BIN=""
-if [[ -n "${JAVA_HOME:-}" && -x "$JAVA_HOME/bin/java" ]]; then
+if [[ -x "$SELECTED_JAVA_BIN" ]]; then
+  JAVA_BIN="$SELECTED_JAVA_BIN"
+elif [[ -n "${JAVA_HOME:-}" && -x "$JAVA_HOME/bin/java" ]]; then
   JAVA_BIN="$JAVA_HOME/bin/java"
 else
   JAVA_DIR="$(ls -d "$DATA_DIR"/jdk-* 2>/dev/null | head -n 1 || true)"
@@ -280,7 +367,7 @@ else
 fi
 
 if [[ -z "$JAVA_BIN" ]]; then
-  echo "Java not found. Please install Java 18 or 21." >&2
+  echo "Java not found. Please install Java 21 or newer." >&2
   exit 1
 fi
 
@@ -322,6 +409,7 @@ JAVA_OPTS="$(get_java_opts)"
   --add-opens=java.base/jdk.internal.org.objectweb.asm.Opcodes=ALL-UNNAMED \
   -javaagent:"$LOADER_JAR" -noverify -jar "$BURP_JAR" >/dev/null 2>&1 &
 EOF
+} > "$LAUNCHER"
 
 chmod +x "$LAUNCHER"
 echo "Launcher created: $LAUNCHER"
@@ -475,18 +563,15 @@ EOF
 echo "Uninstall instructions created: $UNINSTALL_TXT"
 
 resolve_java_bin() {
-  if [[ -n "${JAVA_HOME:-}" && -x "$JAVA_HOME/bin/java" ]]; then
-    echo "$JAVA_HOME/bin/java"
+  local java_bin
+  java_bin="$(find_installed_java || true)"
+  if [[ -n "$java_bin" ]]; then
+    echo "$java_bin"
     return 0
   fi
-  local java_dir
-  java_dir="$(ls -d "$DATA_DIR"/jdk-* 2>/dev/null | head -n 1 || true)"
-  if [[ -n "$java_dir" && -x "$java_dir/bin/java" ]]; then
-    echo "$java_dir/bin/java"
-    return 0
-  fi
-  if command -v java >/dev/null 2>&1; then
-    command -v java
+  java_bin="$(find_portable_java || true)"
+  if [[ -n "$java_bin" ]]; then
+    echo "$java_bin"
     return 0
   fi
   return 1
@@ -545,9 +630,11 @@ run_as_user() {
 }
 
 echo "Starting Core and Burp Suite..."
-JAVA_BIN="$(resolve_java_bin || true)"
+if [[ -z "${JAVA_BIN:-}" || ! -x "$JAVA_BIN" ]]; then
+  JAVA_BIN="$(resolve_java_bin || true)"
+fi
 if [[ -z "$JAVA_BIN" ]]; then
-  echo "Java not found. Please install Java 18 or 21."
+  echo "Java not found. Please install Java 21 or newer."
 else
   JAVA_OPTS="$(get_java_opts)"
   if [[ -f "$ACTIVE_LOADER" ]]; then
