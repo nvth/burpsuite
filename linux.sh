@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+BURP_DRIVE_URL="https://drive.usercontent.google.com/download?id=1FL9-u9cWqho0h8f6sYie0uYras6AUCOK&export=download&authuser=0"
+BURP_GITHUB_URL="https://github.com/nvth/burpsuite/releases/download/v2026.3.3/burpsuite_pro.jar"
 BURP_URL="https://portswigger-cdn.net/burp/releases/download?product=pro&version=&type=jar"
+BURP_URLS=("$BURP_DRIVE_URL" "$BURP_GITHUB_URL" "$BURP_URL")
 JDK_URL="https://github.com/nvth/burpsuite/releases/download/v2024.7.4/jdk-21.0.9_linux-x64_bin.tar.gz"
 LOADER_UBUNTU_URL="https://github.com/nvth/burpsuite/releases/download/v2026.3.3/core.jar"
 ICON_URL="https://github.com/nvth/burpsuite/releases/download/v2024.7.4/burppro.ico"
@@ -9,6 +12,7 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$SCRIPT_DIR/burpsuite_nvth"
 DATA_DIR="$ROOT_DIR/data"
 BIN_DIR="$ROOT_DIR/bin"
+JDK_DIR="$ROOT_DIR/jdk"
 
 BURP_JAR="$DATA_DIR/burpsuite_pro.jar"
 LOADER_UBUNTU="$DATA_DIR/core.jar"
@@ -30,6 +34,37 @@ fi
 
 mkdir -p "$DATA_DIR" "$BIN_DIR"
 
+curl_download_with_resume() {
+  local dest="$1"
+  local resume_mode="${2:-yes}"
+  shift 2
+  local attempt rc=0
+  local -a curl_args=()
+
+  for attempt in 1 2 3 4; do
+    if [[ "$resume_mode" == "yes" && -s "$dest" ]]; then
+      echo "Download interrupted. Resuming $dest (attempt $attempt/4)..." >&2
+      curl_args=(-C - -o "$dest" "$@")
+    elif [[ "$resume_mode" != "yes" && $attempt -gt 1 ]]; then
+      rm -f -- "$dest"
+      echo "Retrying download (attempt $attempt/4)..." >&2
+      curl_args=(-o "$dest" "$@")
+    else
+      curl_args=(-o "$dest" "$@")
+    fi
+
+    if curl "${curl_args[@]}"; then
+      return 0
+    else
+      rc=$?
+    fi
+    if [[ $attempt -lt 4 ]]; then
+      sleep 2
+    fi
+  done
+
+  return "$rc"
+}
 
 download_file() {
   local url="$1"
@@ -37,16 +72,20 @@ download_file() {
   local label="$3"
   echo "Downloading $label..."
   if command -v curl >/dev/null 2>&1; then
-    curl -L --fail -o "$dest" "$url"
+    if ! curl_download_with_resume "$dest" yes -L --fail --show-error --progress-bar --connect-timeout 30 --speed-time 120 --speed-limit 1024 "$url"; then
+      return 1
+    fi
   elif command -v wget >/dev/null 2>&1; then
-    wget -O "$dest" "$url"
+    if ! wget -c -O "$dest" "$url"; then
+      return 1
+    fi
   else
     echo "curl or wget not found. Please install one of them."
-    exit 1
+    return 1
   fi
   if [[ ! -s "$dest" ]]; then
     echo "Download failed or file is empty: $dest"
-    exit 1
+    return 1
   fi
 }
 
@@ -83,32 +122,190 @@ validate_jar() {
   return 2
 }
 
+is_jar_file() {
+  local file="$1"
+  [[ -s "$file" ]] && [[ "$(head -c 2 "$file" 2>/dev/null)" == "PK" ]]
+}
+
+download_google_drive() {
+  local dest="$1"
+  local page="${dest}.drive-page.$$"
+  local result="${dest}.drive-result.$$"
+  local cookies="${dest}.drive-cookies.$$"
+  local form_data="${dest}.drive-form.$$"
+  local response_url action method field value download_status has_id=0 has_export=0 has_confirm=0
+  local -a form_args=()
+
+  if ! response_url="$(curl -L --fail --progress-bar --show-error --connect-timeout 30 --speed-time 120 --speed-limit 1024 -c "$cookies" -o "$page" -w '%{url_effective}' "$BURP_DRIVE_URL")"; then
+    rm -f -- "$page" "$result" "$cookies"
+    return 1
+  fi
+
+  if is_jar_file "$page"; then
+    mv -f -- "$page" "$dest"
+    rm -f -- "$result" "$cookies" "$form_data"
+    return 0
+  fi
+
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "Python 3 is required to parse Google's Download anyway form."
+    rm -f -- "$page" "$result" "$cookies" "$form_data"
+    return 1
+  fi
+
+  if ! python3 - "$page" "$response_url" > "$form_data" <<'PY'
+from html.parser import HTMLParser
+import sys
+from urllib.parse import urljoin
+
+class DownloadFormParser(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.action = ""
+        self.method = "GET"
+        self.fields = []
+        self.active = False
+        self.found = False
+        self.button = None
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if tag == "form" and not self.found and attrs.get("id") == "download-form":
+            self.found = True
+            self.active = True
+            self.action = attrs.get("action", "")
+            self.method = attrs.get("method", "GET").upper()
+        elif self.active and tag == "input":
+            name = attrs.get("name")
+            input_type = attrs.get("type", "").lower()
+            is_download_button = input_type == "submit" and (
+                attrs.get("id") == "uc-download-link"
+                or "download anyway" in attrs.get("value", "").lower()
+            )
+            if name and (input_type == "hidden" or is_download_button):
+                self.fields.append((name, attrs.get("value", "")))
+        elif self.active and tag == "button" and attrs.get("name"):
+            self.button = [attrs.get("name"), attrs.get("value", ""), attrs.get("id", ""), ""]
+
+    def handle_data(self, data):
+        if self.button is not None:
+            self.button[3] += data
+
+    def handle_endtag(self, tag):
+        if tag == "button" and self.button is not None:
+            name, value, element_id, label = self.button
+            if element_id == "uc-download-link" or "download anyway" in label.lower():
+                self.fields.append((name, value or label.strip()))
+            self.button = None
+        elif tag == "form" and self.active:
+            self.active = False
+
+parser = DownloadFormParser()
+with open(sys.argv[1], "r", encoding="utf-8", errors="replace") as page:
+    parser.feed(page.read())
+if not parser.found or not parser.action:
+    raise SystemExit(1)
+print(urljoin(sys.argv[2], parser.action))
+print(parser.method)
+for name, value in parser.fields:
+    print(f"{name}\t{value}")
+PY
+  then
+    rm -f -- "$page" "$result" "$cookies" "$form_data"
+    return 1
+  fi
+
+  {
+    IFS= read -r action || true
+    IFS= read -r method || true
+    while IFS=$'\t' read -r field value; do
+      [[ -n "$field" ]] || continue
+      form_args+=(--data-urlencode "$field=$value")
+      [[ "$field" == "id" ]] && has_id=1
+      [[ "$field" == "export" ]] && has_export=1
+      [[ "$field" == "confirm" ]] && has_confirm=1
+    done
+  } < "$form_data"
+  if [[ -z "$action" || $has_id -ne 1 || $has_export -ne 1 || $has_confirm -ne 1 ]]; then
+    rm -f -- "$page" "$result" "$cookies" "$form_data"
+    return 1
+  fi
+
+  echo "Submitting Google's current Download anyway form..."
+  if [[ "$method" == "GET" ]]; then
+    if curl_download_with_resume "$result" yes -L --fail --progress-bar --show-error --connect-timeout 30 --speed-time 120 --speed-limit 1024 -b "$cookies" -c "$cookies" -G "${form_args[@]}" "$action"; then
+      download_status=0
+    else
+      download_status=$?
+    fi
+  elif [[ "$method" == "POST" ]]; then
+    if curl_download_with_resume "$result" no -L --fail --progress-bar --show-error --connect-timeout 30 --speed-time 120 --speed-limit 1024 -b "$cookies" -c "$cookies" -X POST "${form_args[@]}" "$action"; then
+      download_status=0
+    else
+      download_status=$?
+    fi
+  else
+    rm -f -- "$page" "$result" "$cookies" "$form_data"
+    return 1
+  fi
+  if [[ $download_status -eq 0 ]] && is_jar_file "$result"; then
+    mv -f -- "$result" "$dest"
+    rm -f -- "$page" "$cookies" "$form_data"
+    return 0
+  fi
+
+  rm -f -- "$page" "$result" "$cookies" "$form_data"
+  return 1
+}
+
 ensure_valid_jar() {
   local file="$1"
-  local url="$2"
-  local label="$3"
+  local label="$2"
+  shift 2
   if [[ -f "$file" ]]; then
-    validate_jar "$file"
-    local rc=$?
-    if [[ $rc -eq 0 ]]; then
+    if validate_jar "$file"; then
       echo "$label already exists and is valid."
       return 0
-    elif [[ $rc -eq 2 ]]; then
-      exit 1
+    else
+      local rc=$?
+      if [[ $rc -eq 2 ]]; then
+        exit 1
+      fi
     fi
     echo "$label is invalid. Re-downloading..."
-    rm -f "$file"
+    rm -f -- "$file"
   fi
-  download_file "$url" "$file" "$label"
-  validate_jar "$file"
-  local rc=$?
-  if [[ $rc -eq 2 ]]; then
-    exit 1
-  fi
-  if [[ $rc -ne 0 ]]; then
-    echo "$label validation failed after download."
-    exit 1
-  fi
+
+  local url rc downloaded
+  for url in "$@"; do
+    echo "Trying download URL: $url"
+    if [[ "$url" == "$BURP_DRIVE_URL" ]]; then
+      if download_google_drive "$file"; then downloaded=1; else downloaded=0; fi
+    elif download_file "$url" "$file" "$label"; then
+      downloaded=1
+    else
+      downloaded=0
+    fi
+
+    if [[ $downloaded -eq 1 ]]; then
+      if validate_jar "$file"; then
+        return 0
+      else
+        rc=$?
+        if [[ $rc -eq 2 ]]; then
+          rm -f -- "$file"
+          exit 1
+        fi
+        echo "$label validation failed for this source. Trying the next source."
+      fi
+    else
+      echo "Download failed from this source. Trying the next source."
+    fi
+    rm -f -- "$file"
+  done
+
+  echo "Unable to download a valid $label from any configured source."
+  exit 1
 }
 
 get_java_major() {
@@ -139,84 +336,20 @@ get_java_major() {
   return 1
 }
 
-find_installed_java() {
-  local candidate major
-  local -a candidates=()
-
-  if [[ -n "${JAVA_HOME:-}" ]]; then
-    candidates+=("$JAVA_HOME/bin/java")
+get_java_home_from_bin() {
+  local java_cmd="$1"
+  local resolved_java=""
+  if command -v readlink >/dev/null 2>&1; then
+    resolved_java="$(readlink -f -- "$java_cmd" 2>/dev/null || true)"
   fi
-  if command -v java >/dev/null 2>&1; then
-    candidates+=("$(command -v java)")
+  if [[ -z "$resolved_java" ]] && command -v realpath >/dev/null 2>&1; then
+    resolved_java="$(realpath -- "$java_cmd" 2>/dev/null || true)"
   fi
-
-  # Include Java installations managed by the system alternatives database.
-  if command -v update-alternatives >/dev/null 2>&1; then
-    while IFS= read -r candidate; do
-      [[ -n "$candidate" ]] && candidates+=("$candidate")
-    done < <(update-alternatives --list java 2>/dev/null || true)
-  fi
-
-  # Check common system-wide Java installation locations, even when Java is
-  # not exported through PATH or JAVA_HOME.
-  for candidate in \
-    /usr/lib/jvm/*/bin/java \
-    /usr/java/*/bin/java \
-    /usr/local/java/*/bin/java \
-    /opt/java/*/bin/java \
-    /opt/*/bin/java \
-    /home/*/.sdkman/candidates/java/*/bin/java \
-    /root/.sdkman/candidates/java/*/bin/java; do
-    [[ -x "$candidate" ]] && candidates+=("$candidate")
-  done
-
-  for candidate in "${candidates[@]}"; do
-    [[ -x "$candidate" ]] || continue
-    major="$(get_java_major "$candidate" || true)"
-    if [[ "$major" =~ ^[0-9]+$ ]] && (( major >= 21 )); then
-      echo "$candidate"
-      return 0
-    fi
-  done
-  return 1
-}
-
-find_portable_java() {
-  local candidate major
-  for candidate in "$DATA_DIR"/jdk-*/bin/java; do
-    [[ -x "$candidate" ]] || continue
-    major="$(get_java_major "$candidate" || true)"
-    if [[ "$major" =~ ^[0-9]+$ ]] && (( major >= 21 )); then
-      echo "$candidate"
-      return 0
-    fi
-  done
-  return 1
+  [[ -n "$resolved_java" ]] || resolved_java="$java_cmd"
+  dirname -- "$(dirname -- "$resolved_java")"
 }
 
 install_java21() {
-  local existing_dir=""
-  local candidate
-  for candidate in "$DATA_DIR"/jdk-*; do
-    if [[ -d "$candidate" && -x "$candidate/bin/java" ]]; then
-      existing_dir="$candidate"
-      break
-    fi
-  done
-  if [[ -n "$existing_dir" ]]; then
-    echo "Found existing JDK at $existing_dir. Using it."
-    export JAVA_HOME="$existing_dir"
-    export PATH="$JAVA_HOME/bin:$PATH"
-    cat > "$ENV_FILE" <<EOF
-export JAVA_HOME="$JAVA_HOME"
-export PATH="\$JAVA_HOME/bin:\$PATH"
-EOF
-    chmod 644 "$ENV_FILE"
-    echo "JAVA_HOME set to $JAVA_HOME"
-    echo "Environment file created: $ENV_FILE"
-    return 0
-  fi
-
   if [[ -f "$JDK_TAR" ]]; then
     echo "JDK archive already exists. Verifying..."
     if ! validate_tar_gz "$JDK_TAR"; then
@@ -230,7 +363,7 @@ EOF
     download_file "$JDK_URL" "$JDK_TAR" "OpenJDK 21"
   fi
 
-  echo "Installing OpenJDK 21 (silent)..."
+  echo "Installing OpenJDK 21..."
   local top_dir
   set +o pipefail
   top_dir="$(tar -tzf "$JDK_TAR" | head -n 1 | cut -d/ -f1)"
@@ -240,65 +373,83 @@ EOF
     echo "Failed to read JDK archive. Please re-run the script to re-download."
     exit 1
   fi
-  if [[ -z "$top_dir" ]]; then
-    echo "Failed to read JDK archive."
+  if [[ -z "$top_dir" || "$top_dir" == "." || "$top_dir" == ".." || "$top_dir" == */* ]]; then
+    echo "JDK archive has an invalid top-level directory."
     exit 1
   fi
 
-  if [[ ! -d "$DATA_DIR/$top_dir" ]]; then
-    tar -xzf "$JDK_TAR" -C "$DATA_DIR"
-  else
-    echo "JDK already extracted at $DATA_DIR/$top_dir."
-  fi
+  local extract_dir="$DATA_DIR/jdk_extract"
+  local extracted_jdk="$extract_dir/$top_dir"
+  rm -rf -- "$extract_dir"
+  mkdir -p "$extract_dir"
+  tar -xzf "$JDK_TAR" -C "$extract_dir"
 
-  if [[ ! -x "$DATA_DIR/$top_dir/bin/java" ]]; then
-    echo "Java binary not found after extraction: $DATA_DIR/$top_dir/bin/java"
+  if [[ ! -x "$extracted_jdk/bin/java" ]]; then
+    echo "Java binary not found after extraction: $extracted_jdk/bin/java"
+    rm -rf -- "$extract_dir"
     exit 1
   fi
 
-  export JAVA_HOME="$DATA_DIR/$top_dir"
+  local extracted_major
+  extracted_major="$(get_java_major "$extracted_jdk/bin/java" || true)"
+  if [[ "$extracted_major" != "21" ]]; then
+    echo "Downloaded JDK has Java major version $extracted_major; expected 21."
+    rm -rf -- "$extract_dir"
+    exit 1
+  fi
+
+  rm -rf -- "$JDK_DIR"
+  mv -- "$extracted_jdk" "$JDK_DIR"
+  rm -rf -- "$extract_dir"
+
+  export JAVA_HOME="$JDK_DIR"
   export PATH="$JAVA_HOME/bin:$PATH"
+}
 
-  cat > "$ENV_FILE" <<EOF
+JAVA_BIN="$JDK_DIR/bin/java"
+JAVA_MAJOR="$(get_java_major "$JAVA_BIN" || true)"
+if [[ "$JAVA_MAJOR" != "21" ]]; then
+  SYSTEM_JAVA_BIN="$(command -v java 2>/dev/null || true)"
+  SYSTEM_JAVA_MAJOR=""
+  if [[ -n "$SYSTEM_JAVA_BIN" ]]; then
+    SYSTEM_JAVA_MAJOR="$(get_java_major "$SYSTEM_JAVA_BIN" || true)"
+  fi
+  if [[ "$SYSTEM_JAVA_MAJOR" != "21" && -n "${JAVA_HOME:-}" && -x "$JAVA_HOME/bin/java" ]]; then
+    SYSTEM_JAVA_BIN="$JAVA_HOME/bin/java"
+    SYSTEM_JAVA_MAJOR="$(get_java_major "$SYSTEM_JAVA_BIN" || true)"
+  fi
+  if [[ "$SYSTEM_JAVA_MAJOR" == "21" ]]; then
+    JAVA_BIN="$SYSTEM_JAVA_BIN"
+    JAVA_MAJOR="$SYSTEM_JAVA_MAJOR"
+    echo "Found Java 21 at $JAVA_BIN. Reusing it; no JDK download is needed."
+  else
+    echo "Java 21 was not found in the application folder or on the system. Installing it now."
+    install_java21
+    JAVA_BIN="$JDK_DIR/bin/java"
+    JAVA_MAJOR="$(get_java_major "$JAVA_BIN" || true)"
+  fi
+fi
+if [[ "$JAVA_MAJOR" != "21" ]]; then
+  echo "Could not find or install a Java 21 runtime. Last checked: $JAVA_BIN."
+  exit 1
+fi
+if [[ "$JAVA_BIN" == "$JDK_DIR/bin/java" ]]; then
+  JAVA_HOME="$JDK_DIR"
+else
+  JAVA_HOME="$(get_java_home_from_bin "$JAVA_BIN")"
+fi
+export JAVA_HOME
+export PATH="$JAVA_HOME/bin:$PATH"
+cat > "$ENV_FILE" <<EOF
 export JAVA_HOME="$JAVA_HOME"
 export PATH="\$JAVA_HOME/bin:\$PATH"
 EOF
-  chmod 644 "$ENV_FILE"
-  echo "JAVA_HOME set to $JAVA_HOME"
-  echo "Environment file created: $ENV_FILE"
-}
+chmod 644 "$ENV_FILE"
+echo "JAVA_HOME set to $JAVA_HOME"
+echo "Environment file created: $ENV_FILE"
+echo "Using Java 21: $JAVA_BIN"
 
-JAVA_BIN="$(find_installed_java || true)"
-if [[ -n "$JAVA_BIN" ]]; then
-  JAVA_MAJOR="$(get_java_major "$JAVA_BIN" || true)"
-  echo "Using installed Java $JAVA_MAJOR: $JAVA_BIN"
-else
-  JAVA_BIN="$(find_portable_java || true)"
-  if [[ -n "$JAVA_BIN" ]]; then
-    JAVA_MAJOR="$(get_java_major "$JAVA_BIN" || true)"
-    echo "Using portable Java $JAVA_MAJOR: $JAVA_BIN"
-  fi
-fi
-
-if [[ -z "$JAVA_BIN" ]]; then
-  echo "No installed Java 21 or newer was found."
-  echo "A portable JDK 21 will be used as a fallback."
-  read -r -p "Do you want to download and install OpenJDK 21 now? (Y/N) " answer
-  if [[ ! $answer =~ ^[Yy]([Ee][Ss])?$ ]]; then
-    echo "This app requires Java 21 or newer. Install it and re-run this script."
-    exit 1
-  fi
-  install_java21
-  JAVA_BIN="$JAVA_HOME/bin/java"
-  JAVA_MAJOR="$(get_java_major "$JAVA_BIN" || true)"
-  if [[ ! "$JAVA_MAJOR" =~ ^[0-9]+$ ]] || (( JAVA_MAJOR < 21 )); then
-    echo "Java 21 install did not complete successfully. Please install Java 21 or newer and re-run."
-    exit 1
-  fi
-  echo "Using portable Java $JAVA_MAJOR: $JAVA_BIN"
-fi
-
-ensure_valid_jar "$BURP_JAR" "$BURP_URL" "burpsuite_pro.jar"
+ensure_valid_jar "$BURP_JAR" "burpsuite_pro.jar" "${BURP_URLS[@]}"
 
 if [[ -f "$SCRIPT_DIR/core.jar" && "$SCRIPT_DIR/core.jar" != "$LOADER_UBUNTU" ]]; then
   cp -f "$SCRIPT_DIR/core.jar" "$LOADER_UBUNTU"
@@ -306,7 +457,7 @@ fi
 if [[ ! -f "$LOADER_UBUNTU" ]]; then
   echo "[INFO] Local core.jar not found. Downloading Core from GitHub release v2026.3.3."
 fi
-ensure_valid_jar "$LOADER_UBUNTU" "$LOADER_UBUNTU_URL" "core.jar"
+ensure_valid_jar "$LOADER_UBUNTU" "core.jar" "$LOADER_UBUNTU_URL"
 
 if [[ ! -f "$ICON_PATH" ]]; then
   if [[ -f "$SCRIPT_DIR/burppro.ico" ]]; then
@@ -326,7 +477,7 @@ fi
 
 {
   printf '%s\n' '#!/usr/bin/env bash'
-  printf 'SELECTED_JAVA_BIN=%q\n' "$JAVA_BIN"
+  printf 'CONFIGURED_JAVA_BIN=%q\n' "$JAVA_BIN"
   cat <<'EOF'
 set -euo pipefail
 
@@ -338,6 +489,7 @@ elif command -v realpath >/dev/null 2>&1; then
 fi
 ROOT_DIR="$(cd -- "$(dirname -- "$SCRIPT_PATH")/.." && pwd)"
 DATA_DIR="$ROOT_DIR/data"
+JDK_DIR="$ROOT_DIR/jdk"
 BURP_JAR="$DATA_DIR/burpsuite_pro.jar"
 
 if [[ -f "$DATA_DIR/core.jar" ]]; then
@@ -352,22 +504,45 @@ if [[ ! -f "$BURP_JAR" ]]; then
   exit 1
 fi
 
-JAVA_BIN=""
-if [[ -x "$SELECTED_JAVA_BIN" ]]; then
-  JAVA_BIN="$SELECTED_JAVA_BIN"
-elif [[ -n "${JAVA_HOME:-}" && -x "$JAVA_HOME/bin/java" ]]; then
-  JAVA_BIN="$JAVA_HOME/bin/java"
-else
-  JAVA_DIR="$(ls -d "$DATA_DIR"/jdk-* 2>/dev/null | head -n 1 || true)"
-  if [[ -n "$JAVA_DIR" && -x "$JAVA_DIR/bin/java" ]]; then
-    JAVA_BIN="$JAVA_DIR/bin/java"
-  else
-    JAVA_BIN="$(command -v java || true)"
+get_java_major() {
+  local java_cmd="${1:-}"
+  [[ -n "$java_cmd" && -x "$java_cmd" ]] || return 1
+  local line
+  line="$("$java_cmd" -version 2>&1 | head -n 1)"
+  if [[ $line =~ \"1\.([0-9]+) ]]; then
+    echo "${BASH_REMATCH[1]}"
+    return 0
+  fi
+  if [[ $line =~ \"([0-9]+)\. ]]; then
+    echo "${BASH_REMATCH[1]}"
+    return 0
+  fi
+  if [[ $line =~ \"([0-9]+)\" ]]; then
+    echo "${BASH_REMATCH[1]}"
+    return 0
+  fi
+  return 1
+}
+
+JAVA_BIN="$JDK_DIR/bin/java"
+JAVA_MAJOR="$(get_java_major "$JAVA_BIN" || true)"
+if [[ "$JAVA_MAJOR" != "21" ]]; then
+  SYSTEM_JAVA_BIN="$CONFIGURED_JAVA_BIN"
+  JAVA_MAJOR="$(get_java_major "$SYSTEM_JAVA_BIN" || true)"
+  if [[ "$JAVA_MAJOR" != "21" ]]; then
+    SYSTEM_JAVA_BIN="$(command -v java 2>/dev/null || true)"
+    JAVA_MAJOR="$(get_java_major "$SYSTEM_JAVA_BIN" || true)"
+  fi
+  if [[ "$JAVA_MAJOR" != "21" && -n "${JAVA_HOME:-}" && -x "$JAVA_HOME/bin/java" ]]; then
+    SYSTEM_JAVA_BIN="$JAVA_HOME/bin/java"
+    JAVA_MAJOR="$(get_java_major "$SYSTEM_JAVA_BIN" || true)"
+  fi
+  if [[ "$JAVA_MAJOR" == "21" ]]; then
+    JAVA_BIN="$SYSTEM_JAVA_BIN"
   fi
 fi
-
-if [[ -z "$JAVA_BIN" ]]; then
-  echo "Java not found. Please install Java 21 or newer." >&2
+if [[ "$JAVA_MAJOR" != "21" ]]; then
+  echo "Java 21 not found in the application folder, PATH, or JAVA_HOME. Re-run the installer." >&2
   exit 1
 fi
 
@@ -474,6 +649,7 @@ fi
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 BIN_DIR="$ROOT_DIR/bin"
 DATA_DIR="$ROOT_DIR/data"
+JDK_DIR="$ROOT_DIR/jdk"
 USER_HOME="$(getent passwd "$INSTALL_USER" | cut -d: -f6)"
 if [[ -z "$USER_HOME" || "$USER_HOME" != /* || "$USER_HOME" == / || ! -d "$USER_HOME" ]]; then
   echo "[ERROR] Cannot resolve the installation account's home directory: $INSTALL_USER" >&2
@@ -532,6 +708,10 @@ if [[ -d "$DATA_DIR" ]]; then
   rm -rf "$DATA_DIR"
 fi
 
+if [[ -d "$JDK_DIR" ]]; then
+  rm -rf "$JDK_DIR"
+fi
+
 if [[ -f "$ENV_FILE" ]]; then
   rm -f "$ENV_FILE"
 fi
@@ -563,16 +743,30 @@ EOF
 echo "Uninstall instructions created: $UNINSTALL_TXT"
 
 resolve_java_bin() {
-  local java_bin
-  java_bin="$(find_installed_java || true)"
-  if [[ -n "$java_bin" ]]; then
-    echo "$java_bin"
-    return 0
+  local java_bin="$JDK_DIR/bin/java"
+  local major
+  if [[ -x "$java_bin" ]]; then
+    major="$(get_java_major "$java_bin" || true)"
+    if [[ "$major" == "21" ]]; then
+      echo "$java_bin"
+      return 0
+    fi
   fi
-  java_bin="$(find_portable_java || true)"
+  java_bin="$(command -v java 2>/dev/null || true)"
   if [[ -n "$java_bin" ]]; then
-    echo "$java_bin"
-    return 0
+    major="$(get_java_major "$java_bin" || true)"
+    if [[ "$major" == "21" ]]; then
+      echo "$java_bin"
+      return 0
+    fi
+  fi
+  if [[ -n "${JAVA_HOME:-}" && -x "$JAVA_HOME/bin/java" ]]; then
+    java_bin="$JAVA_HOME/bin/java"
+    major="$(get_java_major "$java_bin" || true)"
+    if [[ "$major" == "21" ]]; then
+      echo "$java_bin"
+      return 0
+    fi
   fi
   return 1
 }
@@ -634,7 +828,7 @@ if [[ -z "${JAVA_BIN:-}" || ! -x "$JAVA_BIN" ]]; then
   JAVA_BIN="$(resolve_java_bin || true)"
 fi
 if [[ -z "$JAVA_BIN" ]]; then
-  echo "Java not found. Please install Java 21 or newer."
+  echo "Java 21 not found. Re-run the installer."
 else
   JAVA_OPTS="$(get_java_opts)"
   if [[ -f "$ACTIVE_LOADER" ]]; then

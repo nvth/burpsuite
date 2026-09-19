@@ -44,7 +44,10 @@ try {
     Write-Host '[INFO] [Preflight] Download-tool check passed. Installing for the current user.'
 
 # Installation workflow: all installation steps are contained in this file.
+$DriveUrl = "https://drive.usercontent.google.com/download?id=1FL9-u9cWqho0h8f6sYie0uYras6AUCOK&export=download&authuser=0"
+$GitHubUrl = "https://github.com/nvth/burpsuite/releases/download/v2026.3.3/burpsuite_pro.jar"
 $Url = "https://portswigger-cdn.net/burp/releases/download?product=pro&version=&type=jar"
+$BurpDownloadUrls = @($DriveUrl, $GitHubUrl, $Url)
 $OutName = "burpsuite_pro.jar"
 $LoaderName = "core.jar"
 $BatName = "burp.bat"
@@ -54,6 +57,156 @@ $JdkArchiveName = "jdk-21.0.10_windows-x64_bin.zip"
 $LoaderUrl = "https://github.com/nvth/burpsuite/releases/download/v2026.3.3/core.jar"
 $IconUrl = "https://github.com/nvth/burpsuite/releases/download/v2024.7.4/burppro.ico"
 $IconName = "burppro.ico"
+
+function Test-JarFile {
+    param([string]$Path)
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $false }
+    $stream = $null
+    try {
+        $stream = [System.IO.File]::OpenRead($Path)
+        return ($stream.Length -ge 4 -and $stream.ReadByte() -eq 0x50 -and $stream.ReadByte() -eq 0x4B)
+    } catch {
+        return $false
+    } finally {
+        if ($stream) { $stream.Dispose() }
+    }
+}
+
+function Get-HtmlAttribute {
+    param([string]$Tag, [string]$Name)
+    $pattern = '(?i)\b' + [regex]::Escape($Name) + '\s*=\s*["'']([^"'']*)["'']'
+    $match = [regex]::Match($Tag, $pattern)
+    if ($match.Success) {
+        return [System.Net.WebUtility]::HtmlDecode($match.Groups[1].Value)
+    }
+    return ''
+}
+
+function Invoke-CurlWithResume {
+    param(
+        [string]$Destination,
+        [string[]]$RequestArgs,
+        [switch]$Resume
+    )
+
+    $lastExitCode = 0
+    for ($attempt = 1; $attempt -le 4; $attempt++) {
+        $curlArgs = @()
+        $hasPartial = (Test-Path -LiteralPath $Destination -PathType Leaf) -and ((Get-Item -LiteralPath $Destination).Length -gt 0)
+        if ($Resume -and $hasPartial) {
+            Write-Host "Download interrupted. Resuming $Destination (attempt $attempt/4)..."
+            $curlArgs = @('-C', '-', '-o', $Destination) + @($RequestArgs)
+        } elseif (-not $Resume -and $attempt -gt 1 -and $hasPartial) {
+            Remove-Item -LiteralPath $Destination -Force
+            Write-Host "Retrying download from the beginning (attempt $attempt/4)..."
+            $curlArgs = @('-o', $Destination) + @($RequestArgs)
+        } else {
+            $curlArgs = @('-o', $Destination) + @($RequestArgs)
+        }
+
+        & curl.exe @curlArgs
+        $lastExitCode = $LASTEXITCODE
+        if ($lastExitCode -eq 0) { return 0 }
+        if ($attempt -lt 4) { Start-Sleep -Seconds 2 }
+    }
+    return $lastExitCode
+}
+
+function Download-GoogleDriveFile {
+    param([string]$Url, [string]$Destination)
+
+    $suffix = [guid]::NewGuid().ToString('N')
+    $pagePath = "$Destination.drive-page-$suffix"
+    $resultPath = "$Destination.drive-result-$suffix"
+    $cookiePath = "$Destination.drive-cookies-$suffix.txt"
+
+    try {
+        $responseUrl = & curl.exe -L --fail --progress-bar --show-error --connect-timeout 30 --speed-time 120 --speed-limit 1024 -c $cookiePath -o $pagePath -w '%{url_effective}' $Url
+        if ($LASTEXITCODE -ne 0) { return $false }
+        $responseUrl = @($responseUrl) -join ''
+
+        if (Test-JarFile $pagePath) {
+            Move-Item -LiteralPath $pagePath -Destination $Destination -Force | Out-Null
+            return $true
+        }
+
+        $html = [IO.File]::ReadAllText($pagePath)
+        $formMatch = [regex]::Match($html, '(?is)<form\b(?=[^>]*\bid\s*=\s*["'']download-form["''])[^>]*>(.*?)</form>')
+        if (-not $formMatch.Success) { return $false }
+
+        $formTag = [regex]::Match($formMatch.Value, '(?is)^<form\b[^>]*>').Value
+        $action = Get-HtmlAttribute -Tag $formTag -Name 'action'
+        $method = (Get-HtmlAttribute -Tag $formTag -Name 'method').ToUpperInvariant()
+        if (-not $action) { return $false }
+        if (-not $method) { $method = 'GET' }
+        $actionUrl = ([uri]::new([uri]$responseUrl, $action)).AbsoluteUri
+
+        $formFields = New-Object 'System.Collections.Generic.List[object]'
+        foreach ($inputMatch in [regex]::Matches($formMatch.Groups[1].Value, '(?is)<input\b[^>]*>')) {
+            $tag = $inputMatch.Value
+            $name = Get-HtmlAttribute -Tag $tag -Name 'name'
+            $type = (Get-HtmlAttribute -Tag $tag -Name 'type').ToLowerInvariant()
+            $value = Get-HtmlAttribute -Tag $tag -Name 'value'
+            $id = Get-HtmlAttribute -Tag $tag -Name 'id'
+            $isDownloadButton = $type -eq 'submit' -and ($id -eq 'uc-download-link' -or $value -match '(?i)download\s+anyway')
+            if ($name -and ($type -eq 'hidden' -or $isDownloadButton)) {
+                [void]$formFields.Add([pscustomobject]@{ Name = $name; Value = $value })
+            }
+        }
+        foreach ($buttonMatch in [regex]::Matches($formMatch.Groups[1].Value, '(?is)<button\b[^>]*>.*?</button>')) {
+            $buttonHtml = $buttonMatch.Value
+            $buttonTag = [regex]::Match($buttonHtml, '(?is)^<button\b[^>]*>').Value
+            $name = Get-HtmlAttribute -Tag $buttonTag -Name 'name'
+            $id = Get-HtmlAttribute -Tag $buttonTag -Name 'id'
+            $value = Get-HtmlAttribute -Tag $buttonTag -Name 'value'
+            $label = ([regex]::Replace($buttonHtml, '(?is)<[^>]+>', '')).Trim()
+            if ($name -and ($id -eq 'uc-download-link' -or $label -match '(?i)download\s+anyway')) {
+                if (-not $value) { $value = $label }
+                [void]$formFields.Add([pscustomobject]@{ Name = $name; Value = $value })
+            }
+        }
+
+        if (-not ($formFields | Where-Object { $_.Name -eq 'id' }) -or
+            -not ($formFields | Where-Object { $_.Name -eq 'export' }) -or
+            -not ($formFields | Where-Object { $_.Name -eq 'confirm' })) {
+            return $false
+        }
+
+        $curlArgs = @('-L', '--fail', '--progress-bar', '--show-error', '--connect-timeout', '30', '--speed-time', '120', '--speed-limit', '1024', '-b', $cookiePath, '-c', $cookiePath)
+        if ($method -eq 'GET') {
+            $query = @($formFields | ForEach-Object {
+                [uri]::EscapeDataString($_.Name) + '=' + [uri]::EscapeDataString($_.Value)
+            }) -join '&'
+            $separator = if ($actionUrl.Contains('?')) { '&' } else { '?' }
+            $curlArgs += @('-G', ($actionUrl + $separator + $query))
+        } elseif ($method -eq 'POST') {
+            $curlArgs += @('-X', 'POST')
+            foreach ($field in $formFields) {
+                $curlArgs += @('--data-urlencode', ($field.Name + '=' + $field.Value))
+            }
+            $curlArgs += $actionUrl
+        } else {
+            return $false
+        }
+
+        Write-Host '[INFO] Submitting Google Drive confirmation form.'
+        if ($method -eq 'GET') {
+            $downloadExitCode = Invoke-CurlWithResume -Destination $resultPath -RequestArgs $curlArgs -Resume
+        } else {
+            $downloadExitCode = Invoke-CurlWithResume -Destination $resultPath -RequestArgs $curlArgs
+        }
+        if ($downloadExitCode -ne 0 -or -not (Test-JarFile $resultPath)) { return $false }
+
+        Move-Item -LiteralPath $resultPath -Destination $Destination -Force | Out-Null
+        return $true
+    } catch {
+        return $false
+    } finally {
+        foreach ($tempPath in @($pagePath, $resultPath, $cookiePath)) {
+            Remove-Item -LiteralPath $tempPath -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
 
 # Install directories
 $scriptDir = $installerDirectory
@@ -88,7 +241,8 @@ $batPath = Join-Path -Path $binDir -ChildPath $BatName
 $vbsPath = Join-Path -Path $binDir -ChildPath $VbsName
 $jdkDir = Join-Path -Path $rootDir -ChildPath "jdk"
 $jdkArchivePath = Join-Path -Path $dataDir -ChildPath $JdkArchiveName
-$javaExePath = Join-Path -Path $jdkDir -ChildPath "bin\java.exe"
+$bundledJavaExePath = Join-Path -Path $jdkDir -ChildPath "bin\java.exe"
+$javaExePath = $bundledJavaExePath
 $iconPath = Join-Path -Path $dataDir -ChildPath $IconName
 
 function Get-JavaMajorVersion {
@@ -134,54 +288,6 @@ function Get-JavaMajorVersion {
     return $null
 }
 
-function Find-InstalledJava {
-    $candidates = New-Object System.Collections.Generic.List[string]
-
-    # Check JAVA_HOME from the current process and both persistent scopes.
-    foreach ($scope in @('Process', 'User', 'Machine')) {
-        $javaHome = [Environment]::GetEnvironmentVariable('JAVA_HOME', $scope)
-        if ([string]::IsNullOrWhiteSpace($javaHome)) { continue }
-        [void]$candidates.Add((Join-Path $javaHome 'bin\java.exe'))
-    }
-
-    # Check the Java executable already available on PATH.
-    $javaCommand = Get-Command java.exe -CommandType Application -ErrorAction SilentlyContinue |
-        Select-Object -First 1
-    if ($javaCommand -and $javaCommand.Source) {
-        [void]$candidates.Add($javaCommand.Source)
-    }
-
-    # Java installers commonly register their installation directory here,
-    # even when they do not add java.exe to PATH.
-    $registryRoots = @(
-        'HKLM:\SOFTWARE\JavaSoft\JDK',
-        'HKLM:\SOFTWARE\JavaSoft\Java Runtime Environment',
-        'HKLM:\SOFTWARE\WOW6432Node\JavaSoft\JDK',
-        'HKLM:\SOFTWARE\WOW6432Node\JavaSoft\Java Runtime Environment'
-    )
-    foreach ($registryRoot in $registryRoots) {
-        if (-not (Test-Path -LiteralPath $registryRoot)) { continue }
-        foreach ($registryKey in @(Get-ChildItem -LiteralPath $registryRoot -ErrorAction SilentlyContinue)) {
-            $javaHomeProperty = Get-ItemProperty -LiteralPath $registryKey.PSPath -Name JavaHome -ErrorAction SilentlyContinue
-            if ($javaHomeProperty -and $javaHomeProperty.JavaHome) {
-                [void]$candidates.Add((Join-Path $javaHomeProperty.JavaHome 'bin\java.exe'))
-            }
-        }
-    }
-
-    foreach ($candidate in $candidates | Select-Object -Unique) {
-        if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) { continue }
-        $major = Get-JavaMajorVersion -JavaPath $candidate
-        if ($major -ge 21) {
-            return [pscustomobject]@{
-                Path  = $candidate
-                Major = $major
-            }
-        }
-    }
-    return $null
-}
-
 # Ensure install directories exist
 $installStep = 'Create installation directories'
 Write-Host "[INFO] [$installStep] Starting this step."
@@ -192,7 +298,7 @@ if (-not (Test-Path $dataDir)) {
     New-Item -ItemType Directory -Path $dataDir -Force | Out-Null
 }
 # Check access before downloading or replacing any installation files.
-foreach ($directory in @($rootDir, $binDir, $dataDir, $jdkDir)) {
+foreach ($directory in @($rootDir, $binDir, $dataDir)) {
     if (-not (Test-Path -LiteralPath $directory -PathType Container)) { continue }
     $probe = Join-Path $directory ('.write-check-' + [guid]::NewGuid().ToString('N'))
     $stream = $null
@@ -219,84 +325,71 @@ if (Test-Path $loaderPath) { Write-Host "Installed" } else { Write-Host "Not ins
 Write-Host " - $BatName : " -NoNewline
 if (Test-Path $batPath) { Write-Host "Installed" } else { Write-Host "Not installed" }
 
-# Prefer Java 21+ already installed on the machine before checking portable Java.
-$installStep = 'Ensure Java 21+'
+# Reuse an existing Java 21 first. Bundle Java 21 only when the machine has no Java 21.
+$installStep = 'Ensure Java 21'
 Write-Host "[INFO] [$installStep] Starting this step."
-Write-Host ""
-Write-Host "Checking installed Java 21 or newer..."
-$installedJava = Find-InstalledJava
+Write-Host "Checking bundled Java at $bundledJavaExePath..."
+$javaMajor = Get-JavaMajorVersion -JavaPath $bundledJavaExePath
 
-if ($installedJava) {
-    $javaExePath = $installedJava.Path
-    $javaMajor = $installedJava.Major
-    Write-Host "Installed Java $javaMajor detected at $javaExePath."
-} else {
-    Write-Host "No installed Java 21 or newer was found."
-    Write-Host "Checking portable Java 21..."
-    $javaMajor = Get-JavaMajorVersion -JavaPath $javaExePath
-
-    if ($javaMajor -ge 21) {
-        Write-Host "Portable Java $javaMajor detected at $javaExePath."
-    } else {
-        Write-Host "Portable Java 21 not found in $jdkDir."
-        $confirm = Read-Host "Do you want to download portable JDK 21 for this Burp installation now? (Y/N)"
-        if ($confirm -notmatch '^(?i)y(es)?$') {
-            Write-Host "Installation canceled by user."
-            exit 1
-        }
-        Write-Host "Downloading portable JDK 21..."
-        Write-Host "URL: $JdkUrl"
-        Write-Host "Save at $jdkArchivePath"
-
-        & curl.exe -L --fail -o $jdkArchivePath $JdkUrl
-        $exit = $LASTEXITCODE
-        if ($exit -ne 0 -or -not (Test-Path $jdkArchivePath)) {
-            Write-Host "Download Failed: $exit"
-            if ($exit -eq 0) { exit 1 }
-            exit $exit
-        }
-
-        Write-Host "Extracting portable JDK 21..."
-        $jdkExtractDir = Join-Path -Path $dataDir -ChildPath "jdk_extract"
-        if (Test-Path $jdkExtractDir) {
-            Remove-Item -Recurse -Force $jdkExtractDir
-        }
-        New-Item -ItemType Directory -Path $jdkExtractDir -Force | Out-Null
-
-        try {
-            Expand-Archive -Path $jdkArchivePath -DestinationPath $jdkExtractDir -Force
-        } catch {
-            throw
-        }
-
-        $extractedJava = Get-ChildItem -Path $jdkExtractDir -Recurse -Filter "java.exe" |
-            Where-Object { $_.FullName -match '\\bin\\java\.exe$' } |
-            Select-Object -First 1
-
-        if (-not $extractedJava) {
-            Write-Host "Failed to find java.exe in extracted JDK archive."
-            exit 1
-        }
-
-        $extractedJdkRoot = Split-Path -Parent (Split-Path -Parent $extractedJava.FullName)
-        if (Test-Path $jdkDir) {
-            Remove-Item -Recurse -Force $jdkDir
-        }
-        Move-Item -LiteralPath $extractedJdkRoot -Destination $jdkDir -Force
-        if (Test-Path $jdkExtractDir) {
-            Remove-Item -Recurse -Force $jdkExtractDir
-        }
-
-        $javaMajor = Get-JavaMajorVersion -JavaPath $javaExePath
-
-        if ($javaMajor -ge 21) {
-            Write-Host "Portable Java 21 installed successfully at $jdkDir."
-        } else {
-            Write-Host "Warning: portable Java 21 still not detected at $javaExePath."
-            exit 1
+if ($javaMajor -ne 21) {
+    $systemJavaCommand = Get-Command 'java.exe' -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($systemJavaCommand) {
+        $systemJavaPath = $systemJavaCommand.Source
+        $systemJavaMajor = Get-JavaMajorVersion -JavaPath $systemJavaPath
+        if ($systemJavaMajor -eq 21) {
+            $javaExePath = $systemJavaPath
+            $javaMajor = $systemJavaMajor
+            Write-Host "Found Java 21 at $javaExePath. Reusing it; no JDK download is needed."
         }
     }
 }
+
+if ($javaMajor -ne 21) {
+    Write-Host "Java 21 was not found in the application folder or PATH. Installing it under $jdkDir."
+    Write-Host "Downloading portable JDK 21..."
+    Write-Host "URL: $JdkUrl"
+    Write-Host "Save at $jdkArchivePath"
+
+    $curlArgs = @('-L', '--fail', '--show-error', '--progress-bar', '--connect-timeout', '30', '--speed-time', '120', '--speed-limit', '1024', $JdkUrl)
+    $exit = Invoke-CurlWithResume -Destination $jdkArchivePath -RequestArgs $curlArgs -Resume
+    if ($exit -ne 0 -or -not (Test-Path $jdkArchivePath)) {
+        Write-Host "Download Failed: $exit"
+        if ($exit -eq 0) { exit 1 }
+        exit $exit
+    }
+
+    Write-Host "Extracting portable JDK 21..."
+    $jdkExtractDir = Join-Path -Path $dataDir -ChildPath "jdk_extract"
+    if (Test-Path $jdkExtractDir) {
+        Remove-Item -Recurse -Force $jdkExtractDir
+    }
+    New-Item -ItemType Directory -Path $jdkExtractDir -Force | Out-Null
+    Expand-Archive -Path $jdkArchivePath -DestinationPath $jdkExtractDir -Force
+
+    $extractedJava = Get-ChildItem -Path $jdkExtractDir -Recurse -Filter "java.exe" |
+        Where-Object { $_.FullName -match '\\bin\\java\.exe$' } |
+        Select-Object -First 1
+    if (-not $extractedJava) {
+        throw 'Failed to find java.exe in the downloaded JDK archive.'
+    }
+
+    $extractedJdkRoot = Split-Path -Parent (Split-Path -Parent $extractedJava.FullName)
+    if (Test-Path $jdkDir) {
+        Remove-Item -Recurse -Force $jdkDir
+    }
+    Move-Item -LiteralPath $extractedJdkRoot -Destination $jdkDir -Force
+    if (Test-Path $jdkExtractDir) {
+        Remove-Item -Recurse -Force $jdkExtractDir
+    }
+
+    $javaExePath = $bundledJavaExePath
+    $javaMajor = Get-JavaMajorVersion -JavaPath $javaExePath
+}
+
+if ($javaMajor -ne 21) {
+    throw "Could not find or install a Java 21 runtime. Last checked: $javaExePath."
+}
+Write-Host "Using Java 21 at $javaExePath."
 
 # Prefer the personalized Core artifact supplied beside this installer.
 $installStep = 'Install Core'
@@ -314,8 +407,8 @@ if (-not (Test-Path $loaderPath)) {
     Write-Host "URL: $LoaderUrl"
     Write-Host "Save at $loaderPath"
 
-    & curl.exe -L --fail -o $loaderPath $LoaderUrl
-    $exit = $LASTEXITCODE
+    $curlArgs = @('-L', '--fail', '--show-error', '--progress-bar', '--connect-timeout', '30', '--speed-time', '120', '--speed-limit', '1024', $LoaderUrl)
+    $exit = Invoke-CurlWithResume -Destination $loaderPath -RequestArgs $curlArgs -Resume
     if ($exit -eq 0 -and (Test-Path $loaderPath)) {
         Write-Host "Downloaded $LoaderName"
     } else {
@@ -332,18 +425,31 @@ Write-Host "[INFO] [$installStep] Starting this step."
 if (-not (Test-Path $outPath)) {
     Write-Host ""
     Write-Host "Downloading Burpsuite ..."
-    Write-Host "URL: $Url"
     Write-Host "Save at $outPath"
 
-    & curl.exe -L --fail -o $outPath $Url
-    $exit = $LASTEXITCODE
+    $downloaded = $false
+    foreach ($downloadUrl in $BurpDownloadUrls) {
+        Write-Host "Trying download URL: $downloadUrl"
+        if ($downloadUrl -eq $DriveUrl) {
+            if (Download-GoogleDriveFile -Url $downloadUrl -Destination $outPath) { $exit = 0 } else { $exit = 1 }
+        } else {
+            $curlArgs = @('-L', '--fail', '--show-error', '--progress-bar', '--connect-timeout', '30', '--speed-time', '120', '--speed-limit', '1024', $downloadUrl)
+            $exit = Invoke-CurlWithResume -Destination $outPath -RequestArgs $curlArgs -Resume
+        }
+        $isJar = $exit -eq 0 -and (Test-JarFile $outPath)
 
-    if ($exit -eq 0 -and (Test-Path $outPath)) {
-        Write-Host "Downloaded $OutName"
-    } else {
-        Write-Host "Download Failed: $exit"
-        if ($exit -eq 0) { exit 1 }
-        exit $exit
+        if ($isJar) {
+            Write-Host "Downloaded $OutName"
+            $downloaded = $true
+            break
+        }
+
+        Write-Host "Download from this URL failed or did not return a JAR (curl exit code: $exit). Trying the next source."
+        if (Test-Path $outPath) { Remove-Item -LiteralPath $outPath -Force }
+    }
+
+    if (-not $downloaded) {
+        throw "Unable to download $OutName from any configured source."
     }
 } else {
     Write-Host ""
@@ -487,8 +593,8 @@ if (-not (Test-Path $iconPath)) {
     Write-Host "URL: $IconUrl"
     Write-Host "Save at $iconPath"
 
-    & curl.exe -L --fail -o $iconPath $IconUrl
-    $exit = $LASTEXITCODE
+    $curlArgs = @('-L', '--fail', '--show-error', '--progress-bar', '--connect-timeout', '30', '--speed-time', '120', '--speed-limit', '1024', $IconUrl)
+    $exit = Invoke-CurlWithResume -Destination $iconPath -RequestArgs $curlArgs -Resume
     if ($exit -eq 0 -and (Test-Path $iconPath)) {
         Write-Host "Downloaded $IconName"
     } else {
